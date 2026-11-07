@@ -88,7 +88,7 @@ windowrulev2 = size 360 560, class:^(dev\.kurrency\.Kurrency)$
 windowrulev2 = center, class:^(dev\.kurrency\.Kurrency)$
 ```
 
-**Sway / i3**: `for_window [app_id="dev.kurrency.Kurrency"] floating enable, resize set 360 560`
+**Sway**: `for_window [app_id="dev.kurrency.Kurrency"] floating enable, resize set 360 560`
 
 </details>
 
