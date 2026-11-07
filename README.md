@@ -63,6 +63,35 @@ Get the latest version from the [Releases page](https://github.com/hua0512/kurre
 - **Linux**: download the `.AppImage`, make it executable and run it. There is also a
   `.deb` for Debian and Ubuntu, and a `.tar.gz`.
 
+<details>
+<summary><b>Using a tiling window manager?</b> Make Kurrency a small floating window.</summary>
+
+Kurrency is designed as a compact window and sizes its own height to your list. Tiling
+window managers stretch it to fill a column, so add a rule that lets it float.
+
+**niri** (`~/.config/niri/config.kdl`):
+
+```kdl
+window-rule {
+    match app-id=r#"^dev\.kurrency\.Kurrency$"#
+    open-floating true
+    default-column-width { fixed 360; }
+    default-window-height { fixed 560; }
+}
+```
+
+**Hyprland** (`~/.config/hypr/hyprland.conf`):
+
+```ini
+windowrulev2 = float, class:^(dev\.kurrency\.Kurrency)$
+windowrulev2 = size 360 560, class:^(dev\.kurrency\.Kurrency)$
+windowrulev2 = center, class:^(dev\.kurrency\.Kurrency)$
+```
+
+**Sway / i3**: `for_window [app_id="dev.kurrency.Kurrency"] floating enable, resize set 360 560`
+
+</details>
+
 **Opening Kurrency for the first time.** Until releases are signed, your computer may
 warn you about an unknown developer. On macOS, Control-click Kurrency in Applications,
 choose **Open**, then **Open** again. On Windows, click **More info**, then **Run anyway**.
