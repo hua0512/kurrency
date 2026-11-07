@@ -1,0 +1,29 @@
+[package]
+name = "kurrency-core"
+description = "Kurrency's model without the UI: expressions, money formatting, rates and their caches, settings, undo and the UI strings."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# For the app's tests (its dev-dependency enables it): the UI language is
+# kept per thread, as in this crate's own tests, so parallel tests never see
+# each other's, plus a few helpers. Never enabled in a normal build.
+test-support = []
+
+[dependencies]
+anyhow.workspace = true
+dirs.workspace = true
+iso_currency.workspace = true
+log.workspace = true
+rust-i18n.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

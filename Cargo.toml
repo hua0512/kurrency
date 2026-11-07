@@ -1,0 +1,127 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# The pinned toolchain in rust-toolchain.toml; bump both together.
+rust-version = "1.99"
+authors = ["Kurrency contributors"]
+license = "MIT"
+repository = "https://github.com/hua0512/kurrency"
+readme = "README.md"
+publish = false
+
+# Every dependency the crates share is declared once, here; the crates list
+# them with `workspace = true` and add only features.
+[workspace.dependencies]
+kurrency-core = { path = "crates/kurrency-core" }
+
+# gpui-kit and the gpui-pre snapshot crates are pinned exactly (see
+# docs/DEVELOPMENT.md); only `crates/kurrency` may depend on them.
+gpui-kit = "=0.9.0"
+
+anyhow = "1.0.104"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+dirs = "7.0.0"
+embed-resource = "3.0.12"
+env_logger = "0.11.11"
+flate2 = "1.1.11"
+futures = "0.3.34"
+iso_currency = "0.7.1"
+log = "0.4.35"
+rust-i18n = "4.2.4"
+rust_decimal = { version = "1.43.0", features = ["serde"] }
+# TLS for ureq (crates/kurrency/src/net.rs): ring, as ureq's `rustls` uses.
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
+rustls-platform-verifier = "0.7.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sys-locale = "0.3.2"
+ttf-parser = "0.25.1"
+ureq = { version = "3.5.1", default-features = false, features = ["rustls", "platform-verifier", "gzip"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+rust_2018_idioms = { level = "warn", priority = -1 }
+# GPUI code writes `Context<Self>`, not `Context<'_, Self>`, like Zed.
+elided_lifetimes_in_paths = "allow"
+# `pub` in the app or in a private module of the core is a promise nobody
+# can keep; say `pub(crate)` (or `pub(super)`) instead.
+unreachable_pub = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+# A few pedantic lints that catch real mistakes or keep the style uniform,
+# without the noise of the whole group.
+cloned_instead_of_copied = "warn"
+explicit_into_iter_loop = "warn"
+flat_map_option = "warn"
+implicit_clone = "warn"
+inconsistent_struct_constructor = "warn"
+manual_assert = "warn"
+manual_let_else = "warn"
+manual_string_new = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+uninlined_format_args = "warn"
+unnested_or_patterns = "warn"
+# Leftovers from debugging.
+dbg_macro = "warn"
+todo = "warn"
+
+# Measured on a 16-thread x86_64 Linux machine (cold: all 573 crates; with
+# other builds sharing the machine, so +-10%; warm: only kurrency, after an edit):
+#
+#   profile                                cold    warm   binary   gzipped
+#   default release (no LTO, 16 CGUs)      178 s   12 s   65.1 MB  22.5 MB  (49.0 MB stripped)
+#   thin LTO, 1 CGU, strip, panic=abort    199 s   58 s   38.8 MB  15.6 MB
+#     + opt-level = "s"                    180 s   43 s   31.3 MB  12.0 MB
+#     + smaller assets, ureq (release)       -     45 s   28.6 MB  11.3 MB
+#     + fat LTO (dist)                       -    170 s   25.2 MB  11.1 MB
+#   fat LTO, opt 3, panic=abort            375 s  223 s   35.9 MB  14.9 MB
+#   fat LTO, opt 3, panic=unwind           418 s     -    40.3 MB      -
+#
+# (The assets: scripts/subset-inter-font.py and build.rs, -1.7 MB; ureq in
+# place of gpui-pre's reqwest client, crates/kurrency/src/net.rs, -0.9 MB.)
+# Thin LTO gets most of fat LTO's size win for a quarter of the rebuild time,
+# so local release builds stay thin and only the published packages pay for
+# fat LTO. Speed is not the constraint for a UI that idles between
+# keystrokes: optimising for size ("s") saves a fifth of the binary for about
+# 0.4 ms more CPU per frame (2.3 -> 2.7 ms, against a 16.7 ms budget; with
+# fat LTO there is no measurable difference). "z" saves only 0.9 MB more but
+# turns off loop vectorisation, which costs about 45% per frame.
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = true
+# Aborting drops the unwinding tables and landing pads (4.4 MB, 11%) and builds
+# faster. Nothing in Kurrency or GPUI recovers from a panic outside tests (GPUI
+# itself aborts on a panic in its Windows message loop), so unwinding would
+# only leave a half-dead window behind. Tests always unwind regardless.
+panic = "abort"
+
+# The published packages (.github/workflows/release.yml, `cargo build
+# --profile dist`; binaries in target/[<triple>/]dist): the release profile
+# with fat LTO, which saves another 3.5 MB (12%). Its final link takes about
+# 3 minutes instead of 45 s and peaks at about 3 GB, so everyday release
+# builds stay thin.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+
+# CI's test builds: `cargo nextest run --cargo-profile ci`. Debug info is most
+# of a debug build's size and link time and nothing in CI reads it; dropping it
+# for dependencies keeps the cached target directory small enough to stay in
+# GitHub's 10 GB cache quota. The workspace crates keep line tables, so a
+# failing test's backtrace still has file and line numbers.
+[profile.ci]
+inherits = "dev"
+debug = "line-tables-only"
+incremental = false
+
+[profile.ci.package."*"]
+debug = false

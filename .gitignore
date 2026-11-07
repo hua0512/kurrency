@@ -1,0 +1,4 @@
+/target/
+/artifacts/
+/.claude/
+__pycache__/

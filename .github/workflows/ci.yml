@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: &docs-only
+      - "**.md"
+      - "assets/screenshots/**"
+      - "LICENSE"
+  pull_request:
+    paths-ignore: *docs-only
+  workflow_dispatch:
+
+# A new push to a pull request cancels its running checks; runs on `main` all
+# finish, so every commit there has a result and saves the cache.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: 10
+  RUST_BACKTRACE: 1
+
+# Caching: Swatinem/rust-cache keeps `~/.cargo` and the dependency part of
+# `target/`. Only `main` saves; pull requests restore the newest `main` cache
+# for the same key (rust-cache falls back by prefix when Cargo.lock changed),
+# so PR runs never evict `main`'s entries from the 10 GB repository quota.
+# Each kind of build has its own `shared-key`: clippy's check metadata and the
+# test binaries are different artifacts, and sharing one entry would let the
+# last job to finish overwrite the other's.
+jobs:
+  lint:
+    name: Lint (fmt, clippy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # rust-toolchain.toml pins the toolchain (which is also the MSRV) and
+      # its components; the runner's rustup installs exactly that.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - name: Format
+        run: cargo fmt --all --check
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: clippy
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # kurrency-core must build without GPUI (so its tests stay fast and
+      # headless); this reads the resolved graph for every target platform,
+      # without compiling anything.
+      - name: Check that kurrency-core does not depend on GPUI
+        run: |
+          deps=$(cargo tree --locked -p kurrency-core --target all -e normal,build,dev --prefix none)
+          if grep -E '^gpui' <<< "$deps"; then
+            echo "::error file=crates/kurrency-core/Cargo.toml::kurrency-core depends on GPUI (above); only crates/kurrency may."
+            exit 1
+          fi
+      - name: Install system libraries
+        run: .github/scripts/install-linux-deps.sh
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # rust-toolchain.toml pins the toolchain (which is also the MSRV) and
+      # its components; the runner's rustup installs exactly that.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-nextest
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: .github/scripts/install-linux-deps.sh
+      # mold links the test binary several times faster than GNU ld. It is set
+      # up here, not in the repository, so local builds keep their own linker.
+      - uses: rui314/setup-mold@339e96b4ff1f3bd865856ba4cbbe8818a7acb038 # v1
+        if: runner.os == 'Linux'
+      # Both crates' tests in one build. The UI tests (`#[gpui_kit::test]`)
+      # run on GPUI's test platform, which needs no display, window server or
+      # GPU, so they run on every OS here.
+      - name: Test
+        run: cargo nextest run --workspace --cargo-profile ci --profile ci --locked
+      # nextest does not run doctests; rustdoc has them for kurrency-core, the
+      # one library target (the app is a binary).
+      - name: Doctests
+        run: cargo test --workspace --doc --profile ci --locked
+
+  # The newest stable Rust, which rust-toolchain.toml lags until its manual
+  # bump: new lints and compiler changes show up here first, without failing
+  # the pinned checks above.
+  stable:
+    name: Clippy (latest stable)
+    needs: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the latest stable toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy
+      # Dependabot cannot bump rust-toolchain.toml, so say when it is behind.
+      - name: Check the pinned toolchain is current
+        run: |
+          pinned=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          stable=$(rustc --version | cut -d' ' -f2)
+          if [ "$pinned" != "$stable" ]; then
+            echo "::warning file=rust-toolchain.toml::Rust $stable is out; the toolchain is pinned to $pinned. Bump rust-toolchain.toml and rust-version (docs/RELEASING.md)."
+          fi
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: clippy-stable
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install system libraries
+        run: .github/scripts/install-linux-deps.sh
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings

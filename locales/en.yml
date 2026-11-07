@@ -1,0 +1,160 @@
+# Kurrency's English strings. Every key here must also be in zh-CN.yml
+# (checked by kurrency-core's `i18n::tests::both_locales_have_every_key`).
+
+header:
+  refresh: "Refresh rates (%{shortcut})"
+  settings: "Settings"
+  click_for_details: "Click for details"
+  click_to_refresh: "Click or %{shortcut} to refresh"
+  update_failed: "Update failed"
+
+freshness:
+  source: "%{source} · rates of %{date}"
+  bundled_source: "Bundled snapshot · rates of %{date}"
+  unknown_date: "an unknown date"
+  offline: "Offline · next try %{when}"
+  failed: "Update failed · next try %{when}"
+  not_updated: "Not updated yet · bundled with the app"
+  updating: "Updating…"
+  updated_now: "Updated just now"
+  updated_ago: "Updated %{age} ago"
+  next_refresh: "next refresh %{when}"
+  manual: "refresh manually"
+
+# The header's relative age, and "in 4h".
+age:
+  now: "now"
+  minutes: "%{n}m"
+  hours: "%{n}h"
+  days: "%{n}d"
+  in: "in %{age}"
+  soon: "soon"
+
+date:
+  # Space-separated, January first.
+  months: "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec"
+  months_long: "January February March April May June July August September October November December"
+  short: "%{day} %{month}"
+  short_year: "%{day} %{month} %{year}"
+  long: "%{day} %{month} %{year}"
+  date_time: "%{date}, %{time}"
+  bundled: "Bundled · rates of %{date}"
+  build_time: "build time"
+
+# Where the rates came from.
+source:
+  frankfurter: "Frankfurter"
+  frankfurter_ecb: "Frankfurter · ECB"
+  fawaz: "fawazahmed0"
+  ecb: "ECB"
+  bundled: "bundled"
+
+anchor:
+  swap: "Swap with the first row"
+
+# The quick-amount chips: 10, 100, 1,000 and 10,000.
+quick:
+  ten: "10"
+  hundred: "100"
+  thousand: "1k"
+  ten_thousand: "10k"
+
+row:
+  change_tooltip: "Daily change · click for history"
+  copy_value: "Copy value"
+  move_to_top: "Move to top"
+  remove: "Remove"
+  inverse: "1 %{code} = %{rate} %{anchor}"
+
+empty:
+  message: "Type a currency to begin"
+  add: "Add currency"
+
+add_row:
+  add: "+ Add"
+  hint: "type to search"
+
+palette:
+  placeholder: "Search, or 50 gbp · +chf · -jpy · eur>usd"
+  currencies: "Currencies"
+  footer: "↑↓ navigate · ↵ run · Esc close"
+  set_amount: "Set %{code} to %{amount}"
+  add: "Add %{code} · %{name}"
+  remove: "Remove %{code} · %{name}"
+  history: "%{base} → %{quote} history"
+
+toast:
+  removed: "%{code} removed"
+  undo: "Undo"
+
+detail:
+  back: "Back (Esc)"
+  flip: "Flip pair"
+  one_unit: "1 %{code} ="
+  offline: "History unavailable offline"
+  failed: "History unavailable"
+  empty: "No history for this pair"
+  high: "High"
+  low: "Low"
+  average: "Average"
+  footer: "%{source} · daily reference rates%{note}"
+  note_offline: " · offline, cached"
+  note_failed: " · update failed, cached"
+
+range:
+  d7: "7D"
+  d30: "30D"
+  y1: "1Y"
+  y5: "5Y"
+  max: "MAX"
+
+settings:
+  title: "Settings"
+  back: "Back (Esc)"
+  appearance: "Appearance"
+  theme: "Theme"
+  mode_system: "System"
+  mode_light: "Light"
+  mode_dark: "Dark"
+  theme_paper: "Paper"
+  theme_graphite: "Graphite"
+  theme_ink: "Ink"
+  theme_slate: "Slate"
+  up_down: "Up/down colours"
+  by_language: "By language"
+  green_up: "Green up"
+  red_up: "Red up"
+  reduce_motion: "Reduce motion"
+  language: "Language"
+  language_system: "System"
+  # Language names are always written in their own language.
+  english: "English"
+  chinese: "简体中文"
+  numbers: "Numbers"
+  number_format: "Number format"
+  follow_system: "Follow system · %{example}"
+  decimal_places: "Decimal places"
+  currency_default: "Currency default"
+  extra_two: "+2 extra precision"
+  rates: "Rates"
+  source: "Source"
+  source_auto: "Auto"
+  source_ecb: "ECB official"
+  source_frankfurter: "Frankfurter blended"
+  refresh: "Refresh"
+  every_hour: "Every hour"
+  every_6h: "Every 6 hours"
+  every_12h: "Every 12 hours"
+  manually: "Manually"
+  last_updated: "Last updated"
+  refresh_now: "Refresh now"
+  about_version: "Kurrency %{version} · Built with gpui-kit"
+  about_rates: "Rates: Frankfurter / ECB"
+  about_flags: "Flags: flag-icons (MIT)"
+  about_fonts: "Fonts: Inter, Noto Sans SC (SIL OFL 1.1)"
+  about_names: "Currency names: Unicode CLDR (Unicode License v3)"
+
+# Overrides for gpui-kit's own strings (rust_i18n::extend!).
+gpui_component:
+  Command:
+    empty: "No matching currencies"

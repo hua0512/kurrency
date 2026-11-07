@@ -1,0 +1,7 @@
+# cargo-nextest settings. CI runs `cargo nextest run --workspace --profile ci`.
+
+[profile.ci]
+# Report every failure in one run instead of stopping at the first.
+fail-fast = false
+# A hung test fails after two minutes rather than at the job timeout.
+slow-timeout = { period = "30s", terminate-after = 4 }

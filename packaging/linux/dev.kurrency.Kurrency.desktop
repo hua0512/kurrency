@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Kurrency
+GenericName=Currency Converter
+Comment=Convert between currencies with live and offline exchange rates
+Exec=kurrency
+Icon=kurrency
+Terminal=false
+Categories=Utility;Calculator;
+Keywords=currency;exchange;converter;money;rates;forex;
+StartupNotify=true
+StartupWMClass=dev.kurrency.Kurrency

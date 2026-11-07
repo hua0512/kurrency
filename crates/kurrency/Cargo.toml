@@ -1,0 +1,102 @@
+[package]
+name = "kurrency"
+description = "A small, beautiful desktop currency converter built on gpui-kit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+publish.workspace = true
+keywords = ["currency", "converter", "exchange-rates", "gpui", "desktop"]
+categories = ["gui", "finance"]
+
+[dependencies]
+kurrency-core.workspace = true
+gpui-kit.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+env_logger.workspace = true
+# Inflates the fonts build.rs deflated. Already in the tree (resvg's PNG
+# support and usvg's SVGZ reader), so it adds nothing to the build.
+flate2.workspace = true
+futures.workspace = true
+log.workspace = true
+rust_decimal.workspace = true
+sys-locale.workspace = true
+# The HTTP client (src/net.rs): ureq with rustls and the platform's
+# certificate verifier. The two TLS crates are ureq's own, named only to
+# check that the verifier can start.
+ureq.workspace = true
+rustls.workspace = true
+rustls-platform-verifier.workspace = true
+# Reads the bundled fonts' character maps (which currency symbols they can
+# draw). Already in the tree through GPUI's SVG renderer, so it adds nothing
+# to the build.
+ttf-parser.workspace = true
+
+[dev-dependencies]
+kurrency-core = { workspace = true, features = ["test-support"] }
+gpui-kit = { workspace = true, features = ["test-support"] }
+serde_json.workspace = true
+
+[build-dependencies]
+# Gzips the flags and deflates the fonts (build.rs).
+flate2.workspace = true
+
+# The icon and version information of kurrency.exe (build.rs). gpui-pre already
+# builds the same crate for its manifest, so this adds nothing to the build.
+[target.'cfg(windows)'.build-dependencies]
+embed-resource.workspace = true
+
+[lints]
+workspace = true
+
+# cargo-packager (https://github.com/crabnebula-dev/cargo-packager) builds the
+# .deb, AppImage, .app, .dmg and NSIS installer; see docs/RELEASING.md.
+# Binaries are read from target/[<triple>/]<profile> (`--profile dist`:
+# target/dist, as the release workflow builds them), so build them first.
+# cargo-packager reads the paths below relative to this file's directory.
+[package.metadata.packager]
+product-name = "Kurrency"
+identifier = "dev.kurrency.Kurrency"
+publisher = "Kurrency contributors"
+copyright = "Copyright (c) Kurrency contributors. MIT License."
+homepage = "https://github.com/hua0512/kurrency"
+category = "Utility"
+long-description = """
+Kurrency converts between currencies as you type: one amount, every row \
+converting live, with arithmetic in any row. It works offline from cached \
+rates and shows how fresh they are. Rates come from Frankfurter, the European \
+Central Bank and fawazahmed0's exchange API; no accounts, keys or telemetry."""
+icons = [
+  "../../packaging/icons/hicolor/*/apps/kurrency.png",
+  "../../packaging/icons/kurrency.icns",
+  "../../packaging/icons/kurrency.ico",
+]
+resources = [
+  { src = "../../LICENSE", target = "licenses/LICENSE" },
+  { src = "../../NOTICE", target = "licenses/NOTICE" },
+  { src = "../../assets/fonts/OFL.txt", target = "licenses/Inter-OFL.txt" },
+  { src = "../../assets/fonts/NotoSansSC-OFL.txt", target = "licenses/NotoSansSC-OFL.txt" },
+  { src = "../../assets/flags/LICENSE", target = "licenses/flag-icons-MIT.txt" },
+]
+
+[package.metadata.packager.deb]
+# The desktop entry (with StartupWMClass matching the Wayland app_id) is used
+# as-is; it has no template fields. Runtime libraries: libxcb and xkbcommon are
+# linked, Vulkan and Wayland are loaded with dlopen.
+desktop-template = "../../packaging/linux/dev.kurrency.Kurrency.desktop"
+depends = ["libxcb1", "libxkbcommon0", "libxkbcommon-x11-0", "libvulkan1", "libwayland-client0"]
+section = "utils"
+files = { "../../LICENSE" = "usr/share/doc/kurrency/copyright" }
+
+[package.metadata.packager.macos]
+minimum-system-version = "11.0"
+
+[package.metadata.packager.nsis]
+# A per-user install needs no administrator rights.
+installer-mode = "currentUser"
+installer-icon = "../../packaging/icons/kurrency.ico"
+appdata-paths = ["$APPDATA/kurrency", "$LOCALAPPDATA/kurrency"]

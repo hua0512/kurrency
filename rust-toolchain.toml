@@ -1,0 +1,7 @@
+# The one toolchain for local builds, CI and releases; rustup installs it on
+# first use. Bump it by hand with each six-weekly Rust release, together with
+# `rust-version` in Cargo.toml (see docs/RELEASING.md).
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright Kurrency contributors -->
+<component type="desktop-application">
+  <id>dev.kurrency.Kurrency</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Kurrency</name>
+  <summary>Convert between currencies, online or offline</summary>
+  <developer id="dev.kurrency">
+    <name>Kurrency contributors</name>
+  </developer>
+  <description>
+    <p>
+      Kurrency is a small desktop currency converter. Type an amount in any row and
+      every other currency converts as you type.
+    </p>
+    <ul>
+      <li>Math in any row: 120*3+15, 1.5k, (80+40)/3</li>
+      <li>Amounts use each currency's minor units</li>
+      <li>Historical charts for any pair, from 7 days to the full ECB history</li>
+      <li>Works offline from cached rates, and always shows how fresh they are</li>
+      <li>No accounts, API keys or telemetry</li>
+    </ul>
+    <p>
+      Rates come from Frankfurter, the European Central Bank and fawazahmed0's
+      currency API.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.kurrency.Kurrency.desktop</launchable>
+  <provides>
+    <binary>kurrency</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>Calculator</category>
+  </categories>
+  <keywords>
+    <keyword>currency</keyword>
+    <keyword>exchange</keyword>
+    <keyword>converter</keyword>
+    <keyword>money</keyword>
+  </keywords>
+  <url type="homepage">https://github.com/hua0512/kurrency</url>
+  <url type="bugtracker">https://github.com/hua0512/kurrency/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main window, light theme</caption>
+      <image>https://raw.githubusercontent.com/hua0512/kurrency/main/assets/screenshots/main-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Main window, dark theme</caption>
+      <image>https://raw.githubusercontent.com/hua0512/kurrency/main/assets/screenshots/main-dark.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <releases>
+    <release version="0.1.0" date="2026-11-07">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>
