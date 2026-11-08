@@ -78,6 +78,14 @@ pub(crate) fn render(app: &KurrencyApp, cx: &mut Context<KurrencyApp>) -> impl I
                                         .text_color(t.muted)
                                         .disabled(refreshing)
                                         .tooltip(refresh_hint)
+                                        // `gpui_kit`'s `TitleBar` marks the whole
+                                        // header as the window's drag area, which
+                                        // Windows treats as the native caption: a
+                                        // left click there is consumed by the system
+                                        // and the button never gets its mouse-up.
+                                        // Occluding the control keeps the caption
+                                        // hitbox out from under it.
+                                        .occlude()
                                         .on_click(|_, window, cx| {
                                             window.dispatch_action(Box::new(RefreshRates), cx);
                                         }),
@@ -91,6 +99,9 @@ pub(crate) fn render(app: &KurrencyApp, cx: &mut Context<KurrencyApp>) -> impl I
                                 .icon(IconName::Settings)
                                 .text_color(t.text)
                                 .tooltip(tr!("header.settings"))
+                                // See the refresh button above: without this the
+                                // header's native caption area eats the click.
+                                .occlude()
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(Box::new(OpenSettings), cx);
                                 }),
@@ -129,6 +140,9 @@ fn render_freshness(f: Freshness, breaths: usize, t: &Tokens) -> impl IntoElemen
     let error = f.error.clone();
     h_flex()
         .id("freshness")
+        // The header is the window's native drag area; occlude the clickable
+        // parts (see the refresh button) so the caption does not eat clicks.
+        .occlude()
         .h(px(28.))
         .px_1p5()
         .gap(px(6.))
