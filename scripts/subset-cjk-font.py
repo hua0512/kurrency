@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """Rebuilds the bundled CJK fallback font: assets/fonts/NotoSansSC-*.subset.otf.
 
-Inter has no CJK glyphs and Kurrency never relies on system fonts, so the
-Chinese UI draws from Noto Sans SC (SIL OFL 1.1), cut down to the characters
-the app can show:
+Inter has no CJK glyphs and Kurrency prefers not to rely on system fonts, so
+the Chinese UI draws from Noto Sans SC (SIL OFL 1.1), cut down to the
+characters the app can show:
 
 - every character in locales/zh-CN.yml,
 - every Simplified Chinese currency name
   (crates/kurrency-core/src/generated/cldr_zh.rs),
 - gpui-kit's own zh-CN strings that appear in Kurrency (KIT_STRINGS),
 - ASCII, and the common CJK and full-width punctuation.
+
+The family is renamed to `Kurrency Sans SC` (`FAMILY`), not `Noto Sans SC`:
+on Windows, DirectWrite resolves fallback families in the system collection,
+so a bundled family with the same name as an installed one is shaped from
+the system face but rasterized from the bundled face (different glyph ids,
+blank text). A name no system font uses keeps the two apart.
 
 Usage (from the repository root):
 
@@ -53,6 +59,10 @@ SOURCES = [
 ]
 OUT_DIR = ROOT / "assets" / "fonts"
 
+# The bundled family, deliberately not `Noto Sans SC` (see the docstring).
+FAMILY = "Kurrency Sans SC"
+POSTSCRIPT_FAMILY = "KurrencySansSC"
+
 # gpui-kit's zh-CN strings that Kurrency can show (its locales/ui.yml):
 # the input's context menu, the palette's placeholder and empty state, and
 # dialog buttons.
@@ -83,6 +93,24 @@ def fetch(name: str, sha256: str, directory: pathlib.Path) -> pathlib.Path:
     path = directory / name
     path.write_bytes(data)
     return path
+
+
+def rename(path: pathlib.Path, weight: str) -> None:
+    """Renames the subset's family and PostScript names to FAMILY."""
+    from fontTools.ttLib import TTFont
+
+    names = {
+        1: FAMILY,
+        3: f"2.004;GOOG;{POSTSCRIPT_FAMILY}-{weight};ADOBE",
+        4: f"{FAMILY} {weight}",
+        6: f"{POSTSCRIPT_FAMILY}-{weight}",
+        16: FAMILY,
+    }
+    font = TTFont(path)
+    for record in font["name"].names:
+        if record.nameID in names:
+            record.string = names[record.nameID]
+    font.save(path)
 
 
 def pyftsubset() -> list[str]:
@@ -123,6 +151,8 @@ def main() -> None:
                 ],
                 check=True,
             )
+            weight = name.removeprefix("NotoSansSC-").removesuffix(".otf")
+            rename(out, weight)
             print(f"{out.relative_to(ROOT)}: {out.stat().st_size} bytes")
     print(f"{len(text)} characters")
 

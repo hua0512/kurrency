@@ -3,7 +3,8 @@ Noto is a trademark of Google Inc.
 
 NotoSansSC-Regular.subset.otf and NotoSansSC-Medium.subset.otf are subsets
 of Noto Sans SC 2.004 (notofonts/noto-cjk, tag Sans2.004), made by
-scripts/subset-cjk-font.py.
+scripts/subset-cjk-font.py. Their family name is `Kurrency Sans SC` so they
+cannot collide with an installed Noto Sans SC.
 
 This Font Software is licensed under the SIL Open Font License,
 Version 1.1.

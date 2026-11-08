@@ -63,7 +63,12 @@ pub(crate) const FONT_FAMILY: &str = "Inter";
 /// Noto Sans SC 2.004 (SIL OFL 1.1, see `assets/fonts/NotoSansSC-OFL.txt`),
 /// cut down by `scripts/subset-cjk-font.py` to the characters the Chinese UI
 /// uses: the fallback for Inter, which has no CJK glyphs, so the app never
-/// depends on system fonts. Regular and Medium; weight 600 draws Medium.
+/// depends on system fonts where the platform can draw a bundled fallback.
+/// Regular and Medium; weight 600 draws Medium.
+///
+/// The family is `Kurrency Sans SC`, not `Noto Sans SC`, because a machine
+/// with Noto Sans SC installed would otherwise have two faces under one
+/// family name: see [`CJK_FALLBACKS`].
 pub(crate) static CJK_FONTS: LazyLock<[Vec<u8>; 2]> = LazyLock::new(|| {
     [
         inflate(deflated_font!("NotoSansSC-Regular.subset.otf")),
@@ -72,11 +77,35 @@ pub(crate) static CJK_FONTS: LazyLock<[Vec<u8>; 2]> = LazyLock::new(|| {
 });
 
 /// The family name of [`CJK_FONTS`].
-pub(crate) const CJK_FONT_FAMILY: &str = "Noto Sans SC";
+pub(crate) const CJK_FONT_FAMILY: &str = "Kurrency Sans SC";
 
-/// Inter, falling back to [`CJK_FONT_FAMILY`] for the characters it lacks.
+/// Inter's fallbacks for the characters it lacks, in order: the bundled
+/// [`CJK_FONT_FAMILY`], then the CJK fonts systems install for their locale.
+///
+/// On Windows gpui-pre cannot fall back to a font added with `add_fonts`: it
+/// builds the fallback map from the *system* collection and then resolves a
+/// shaped fallback face back to a font by family name, custom fonts first
+/// (gpui-pre-windows `direct_write.rs`). So there the bundled family is
+/// skipped and the first system family in the list draws CJK. (The names must
+/// not collide with a bundled family: DirectWrite would shape with the system
+/// face and draw its glyph ids from the bundled one, which is blank.) Linux
+/// (cosmic-text) and macOS (CoreText) use the bundled family first.
+const CJK_FALLBACKS: &[&str] = &[
+    CJK_FONT_FAMILY,
+    "Noto Sans SC",
+    "Microsoft YaHei UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    "Microsoft YaHei",
+    "WenQuanYi Micro Hei",
+    "SimSun",
+];
+
+/// Inter, falling back to [`CJK_FALLBACKS`] for the characters it lacks.
 pub(crate) fn font_fallbacks() -> gpui_kit::FontFallbacks {
-    gpui_kit::FontFallbacks::from_fonts(vec![CJK_FONT_FAMILY.to_string()])
+    gpui_kit::FontFallbacks::from_fonts(CJK_FALLBACKS.iter().map(|&s| s.to_string()).collect())
 }
 
 /// Sets [`font_fallbacks`] on an element and its children. Views drawn
@@ -451,8 +480,14 @@ mod tests {
             assert_eq!(data[..4], *b"OTTO");
             let face = ttf_parser::Face::parse(data, 0).unwrap();
             assert!(!face.is_variable());
-            // One family for both weights, the name the fallback asks for.
-            assert_eq!(family(&face).as_deref(), Some(CJK_FONT_FAMILY));
+            // One family for both weights, the name the fallback asks for,
+            // and not `Noto Sans SC`: Windows shapes a fallback from the
+            // system collection, so sharing an installed font's family name
+            // would draw the system face's glyph ids from this subset.
+            let family = family(&face);
+            assert_eq!(family.as_deref(), Some(CJK_FONT_FAMILY));
+            assert_ne!(family.as_deref(), Some("Noto Sans SC"));
+            assert!(CJK_FALLBACKS.contains(&CJK_FONT_FAMILY));
             assert!(data.len() < 200_000, "{} bytes", data.len());
             // Both weights cover the same characters.
             assert_eq!(coverage(data), cjk_coverage());
