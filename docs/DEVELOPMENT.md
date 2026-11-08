@@ -185,7 +185,7 @@ fontTools' `pyftsubset` (from an installed fontTools, else through
 
 ```sh
 python3 -I scripts/subset-inter-font.py   # Inter 4.1: Latin, symbols, locales
-python3 -I scripts/subset-cjk-font.py     # Noto Sans SC: the Chinese UI's characters
+python3 -I scripts/subset-cjk-font.py     # Noto Sans SC (as `Kurrency Sans SC`): the Chinese UI's characters
 ```
 
 Inter keeps Latin-1 and Latin Extended-A, punctuation, currency symbols,

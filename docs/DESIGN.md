@@ -87,9 +87,11 @@ All motion is subtle, under 250 ms and interruptible:
 
 - **Brand.** Premium and minimal: near-monochrome, with one restrained accent (Kurrency Slate)
   used for focus and selection.
-- **Typography.** Text uses the bundled Inter, with a Noto Sans SC subset as the CJK fallback.
-  Amounts use tabular numerals: 36px in the anchor and 18px in rows. Decimals are at 55% opacity
-  (75% in Ink) and currency symbols are muted.
+- **Typography.** Text uses the bundled Inter, with a Noto Sans SC subset (`Kurrency Sans SC`)
+  as the CJK fallback. On Windows, where GPUI can only fall back to system fonts, the first
+  installed system CJK font in `assets::CJK_FALLBACKS` draws instead. Amounts use tabular
+  numerals: 36px in the anchor and 18px in rows. Decimals are at 55% opacity (75% in Ink) and
+  currency symbols are muted.
 - **Shapes and sizes.**
   - Cards have radius 12 and chips radius 6.
   - Flags are 20×15 with radius 2.5 and a hairline ring.
@@ -151,8 +153,9 @@ so is its position, except on Wayland, which can't report it.
   - A failed refresh keeps the old table.
   - The first run offline uses a rates snapshot bundled at build time.
 - **Self-contained.** Fonts, flags and icons are embedded in the binary. Users never need to
-  install anything. Symbols the bundled fonts can't draw fall back to the ISO code
-  (`AED 1,250.00`).
+  install anything. (GPUI on Windows can only fall back to installed fonts, so the Chinese UI
+  needs a system CJK font there, which a Chinese Windows has. See §5.) Symbols the bundled
+  fonts can't draw fall back to the ISO code (`AED 1,250.00`).
 
 ## 9. Keyboard
 

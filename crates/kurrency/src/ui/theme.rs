@@ -17,8 +17,9 @@ const THEMES: &str = crate::assets::embed!(str: "themes/kurrency.json");
 /// default pair (Paper and Graphite) following the system appearance until
 /// the settings are read.
 pub(crate) fn init(cx: &mut App) {
-    // The bundled Inter and its CJK fallback, never whatever the system has
-    // installed. (Inflated here, on first use.)
+    // The bundled Inter and its CJK fallback (inflated here, on first use).
+    // Windows falls back to its installed CJK fonts instead; see
+    // `assets::CJK_FALLBACKS`.
     if let Err(err) = cx.text_system().add_fonts(
         crate::assets::FONTS
             .iter()
