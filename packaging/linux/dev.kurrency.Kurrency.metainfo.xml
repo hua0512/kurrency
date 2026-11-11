@@ -66,6 +66,8 @@
         <ul>
           <li>Windows: Chinese text is no longer blank when Noto Sans SC is installed.</li>
           <li>Windows: the refresh and settings buttons respond to the first click.</li>
+          <li>Changing digits roll smoothly and no longer replay after a reorder or paste.</li>
+          <li>The amount card keeps its height while you type.</li>
         </ul>
       </description>
     </release>
