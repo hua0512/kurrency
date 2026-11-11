@@ -69,6 +69,9 @@ Get the latest version from the [Releases page](https://github.com/hua0512/kurre
 Kurrency is designed as a compact window and sizes its own height to your list. Tiling
 window managers stretch it to fill a column, so add a rule that lets it float.
 
+Kurrency's window ID is `dev.kurrency.Kurrency` (the Wayland app ID and the X11 class), and
+it is designed for about 360×560. Add a rule that opens it floating at that size. Examples:
+
 **niri** (`~/.config/niri/config.kdl`):
 
 ```kdl
@@ -83,12 +86,16 @@ window-rule {
 **Hyprland** (`~/.config/hypr/hyprland.conf`):
 
 ```ini
-windowrulev2 = float, class:^(dev\.kurrency\.Kurrency)$
-windowrulev2 = size 360 560, class:^(dev\.kurrency\.Kurrency)$
-windowrulev2 = center, class:^(dev\.kurrency\.Kurrency)$
+windowrule = match:class ^(dev\.kurrency\.Kurrency)$, float on, size 360 560, center on
 ```
 
+Before Hyprland 0.53, use
+`windowrulev2 = float, class:^(dev\.kurrency\.Kurrency)$` and matching `size 360 560` and
+`center` lines.
+
 **Sway**: `for_window [app_id="dev.kurrency.Kurrency"] floating enable, resize set 360 560`
+
+**i3**: `for_window [class="dev\.kurrency\.Kurrency"] floating enable, resize set 360 560`
 
 </details>
 
