@@ -61,6 +61,14 @@
     <display_length compare="ge">360</display_length>
   </requires>
   <releases>
+    <release version="0.1.1" date="2026-11-11">
+      <description>
+        <ul>
+          <li>Windows: Chinese text is no longer blank when Noto Sans SC is installed.</li>
+          <li>Windows: the refresh and settings buttons respond to the first click.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-07">
       <description>
         <p>First release.</p>
