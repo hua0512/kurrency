@@ -37,7 +37,7 @@ impl Render for KurrencyApp {
             self.drag = None;
             cx.defer_in(window, |_, _, cx| cx.notify());
         }
-        self.update_rolls(cx);
+        self.update_rolls(window, cx);
         let theme = cx.theme();
         let (bg, fg) = (theme.background, theme.foreground);
 

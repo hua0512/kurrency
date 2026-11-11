@@ -351,23 +351,33 @@ impl KurrencyApp {
             .map(|(ix, _)| ix)
     }
 
-    /// Records what every amount display shows, for the digit rolls.
-    pub(super) fn update_rolls(&mut self, cx: &App) {
+    /// Records what every amount display shows, for the digit rolls, and
+    /// asks for another frame while one is playing.
+    pub(super) fn update_rolls(&mut self, window: &Window, cx: &App) {
+        use ui::motion::Shown;
         let mut shown = Vec::with_capacity(self.rows.len());
+        let fmt = &self.fmt;
+        let show = |key: &str, code: &str, value: Decimal| {
+            let (text, int_len) = ui::anchor::amount_digits(code, value, fmt);
+            Shown {
+                key: key.to_string(),
+                code: code.to_string(),
+                text,
+                int_len,
+                value,
+            }
+        };
         if let (Some(code), Some(amount), false) = (self.anchor(), self.amount, self.is_editing()) {
-            shown.push((
-                ui::anchor::ANCHOR_ROLL.to_string(),
-                ui::anchor::amount_digits(code, amount, &self.fmt),
-            ));
+            shown.push(show(ui::anchor::ANCHOR_ROLL, code, amount));
         }
         for row in self.rows.iter().skip(1) {
             if let Some(value) = self.value_of(&row.code, cx) {
-                shown.push((
-                    row.code.clone(),
-                    ui::anchor::amount_digits(&row.code, value, &self.fmt),
-                ));
+                shown.push(show(&row.code, &row.code, value));
             }
         }
-        self.motion.update_rolls(shown);
+        let now = cx.background_executor().now();
+        if self.motion.update_rolls(shown, now, !cx.reduce_motion()) {
+            window.request_animation_frame();
+        }
     }
 }

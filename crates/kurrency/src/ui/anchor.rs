@@ -48,8 +48,8 @@ pub(crate) fn code_label(code: &str) -> impl IntoElement {
 }
 
 /// `$ 1,250.00` with the symbol at 45% and the decimals at the theme's
-/// opacity (55%, Ink 75%). With a [`Roll`], the digits that changed last
-/// roll into place.
+/// opacity (55%, Ink 75%). With a [`Roll`], the digits in mid-roll are
+/// drawn where they are, over what they replace rolling out.
 pub(crate) fn amount_text(
     code: &str,
     value: Decimal,
@@ -57,18 +57,14 @@ pub(crate) fn amount_text(
     size: f32,
     weight: FontWeight,
     decimals: f32,
-    roll: Option<(&str, &Roll)>,
+    roll: Option<&Roll>,
 ) -> AnyElement {
     let parts = present::amount_parts(code, value, format, assets::has_glyph);
-    let (key, roll) = match roll {
-        Some((key, roll)) => (key, Some(roll)),
-        None => ("", None),
-    };
     let int_len = parts.integer.chars().count();
     let chars = |text: &str, offset: usize| {
         text.chars()
             .enumerate()
-            .map(|(ix, ch)| motion::roll_char(ch, key, offset + ix, roll, size))
+            .map(|(ix, ch)| motion::roll_char(ch, offset + ix, roll, size))
             .collect::<Vec<_>>()
     };
     h_flex()
@@ -85,22 +81,28 @@ pub(crate) fn amount_text(
                     .child(symbol),
             )
         })
-        .child(h_flex().children(chars(&parts.integer, 0)))
-        .when(!parts.fraction.is_empty(), |el| {
-            el.child(
-                h_flex()
-                    .opacity(decimals)
-                    .children(chars(&parts.fraction, int_len)),
-            )
-        })
+        .child(
+            h_flex()
+                .relative()
+                .child(h_flex().children(chars(&parts.integer, 0)))
+                .when(!parts.fraction.is_empty(), |el| {
+                    el.child(
+                        h_flex()
+                            .opacity(decimals)
+                            .children(chars(&parts.fraction, int_len)),
+                    )
+                })
+                .children(motion::roll_exits(roll, size, decimals)),
+        )
         .into_any_element()
 }
 
 /// What [`amount_text`] shows after the symbol (`1,250.00`), which digit
-/// rolls compare.
-pub(crate) fn amount_digits(code: &str, value: Decimal, format: &money::Format) -> String {
+/// rolls compare, and how many characters of it are the integer part.
+pub(crate) fn amount_digits(code: &str, value: Decimal, format: &money::Format) -> (String, usize) {
     let parts = present::amount_parts(code, value, format, assets::has_glyph);
-    parts.integer + &parts.fraction
+    let int_len = parts.integer.chars().count();
+    (parts.integer + &parts.fraction, int_len)
 }
 
 pub(crate) fn render(
@@ -142,21 +144,21 @@ pub(crate) fn render(
         });
 
     let amount = if editing {
+        // The input pads itself, sets a 1.25rem line height for any text
+        // size and is 32px high; all three are overridden for the 36px
+        // figure. Its height goes through `Styled`: `Input::h` sizes only
+        // multi-line inputs, and the card would shrink 12px while editing.
+        let input = Input::new(&app.anchor_input)
+            .appearance(false)
+            .line_height(px(metrics::CARD_AMOUNT))
+            .px_0()
+            .py_0()
+            .text_size(px(AMOUNT_SIZE))
+            .font_weight(FontWeight::MEDIUM);
         div()
             .key_context(ANCHOR_CONTEXT)
             .w_full()
-            .child(
-                // The input pads itself and sets a 1.25rem line height for
-                // any text size; both are overridden for the 36px figure.
-                Input::new(&app.anchor_input)
-                    .appearance(false)
-                    .h(px(metrics::CARD_AMOUNT))
-                    .line_height(px(metrics::CARD_AMOUNT))
-                    .px_0()
-                    .py_0()
-                    .text_size(px(AMOUNT_SIZE))
-                    .font_weight(FontWeight::MEDIUM),
-            )
+            .child(gpui_kit::Styled::h(input, px(metrics::CARD_AMOUNT)))
             .into_any_element()
     } else {
         let display = match app.amount {
@@ -167,7 +169,7 @@ pub(crate) fn render(
                 AMOUNT_SIZE,
                 FontWeight::MEDIUM,
                 t.decimals,
-                app.motion.roll(ANCHOR_ROLL).map(|roll| (ANCHOR_ROLL, roll)),
+                app.motion.roll(ANCHOR_ROLL),
             ),
             None => div()
                 .text_size(px(AMOUNT_SIZE))

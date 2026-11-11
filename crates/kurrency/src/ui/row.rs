@@ -370,7 +370,7 @@ fn render_row(app: &KurrencyApp, ix: usize, cx: &mut Context<KurrencyApp>) -> St
             AMOUNT_SIZE,
             AMOUNT_WEIGHT,
             t.decimals,
-            app.motion.roll(&code).map(|roll| (code.as_str(), roll)),
+            app.motion.roll(&code),
         ),
         None => div()
             .text_size(px(AMOUNT_SIZE))

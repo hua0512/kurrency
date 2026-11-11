@@ -7,11 +7,14 @@ use super::*;
 fn anchor_edits_convert_commit_and_revert(cx: &mut TestAppContext) {
     let (app, cx) = open_app(cx, None);
     assert_eq!(values(&app, cx), ["90.00", "15,000"]);
+    let chips = cx.debug_bounds("quick-10").unwrap();
 
     // Clicking the formatted amount edits the raw number, all selected.
+    // The input is as tall as the amount, so nothing under the card moves.
     click(cx, "anchor-amount");
     assert!(anchor_focused(&app, cx));
     assert_eq!(input_text(&app, cx), "100");
+    assert_eq!(cx.debug_bounds("quick-10"), Some(chips));
 
     // An expression converts live, with the echo under it.
     cx.simulate_input("1.5k*2");
