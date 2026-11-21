@@ -20,10 +20,11 @@ use gpui_kit::{
 use kurrency_core::i18n::tr;
 use kurrency_core::money;
 use kurrency_core::present::{self, Change};
+use rust_decimal::Decimal;
 
 use crate::app::{KurrencyApp, OpenPicker, OpenRowDetail, ROW_CONTEXT};
 use crate::layout::metrics;
-use crate::ui::anchor::{amount_text, code_label, tabular_numerals};
+use crate::ui::anchor::{amount_text, code_label, fit_size, tabular_numerals};
 use crate::ui::flag::flag;
 use crate::ui::motion::{self, Leaving};
 use crate::ui::theme::{CHIP_TINT, Tokens};
@@ -41,12 +42,27 @@ const CHIP_SLOT: f32 = 62.;
 const AMOUNT_SIZE: f32 = 18.;
 const AMOUNT_WEIGHT: FontWeight = FontWeight(450.);
 
+/// A row amount's text size: 18px, smaller when the amount would not fit
+/// between the code column and the change chip.
+fn amount_size(code: &str, value: Decimal, fmt: &money::Format, window: &Window) -> f32 {
+    // Everything in the row beside the amount column, and a little air.
+    let beside = CODE_X + CODE_W + CHIP_SLOT + ROW_PAD + INSET + 4.;
+    fit_size(
+        code,
+        value,
+        fmt,
+        AMOUNT_SIZE,
+        AMOUNT_WEIGHT,
+        f32::from(window.viewport_size().width) - beside,
+        window,
+    )
+}
+
 pub(crate) fn render_list(
     app: &KurrencyApp,
     window: &mut Window,
     cx: &mut Context<KurrencyApp>,
 ) -> impl IntoElement {
-    let _ = window;
     // While a row is dragged, the list follows the pointer: the drop slot
     // is worked out from where the lifted row's middle is.
     let mut list = v_flex()
@@ -62,7 +78,7 @@ pub(crate) fn render_list(
             }),
         );
     if let Some(drag) = &app.drag {
-        return render_dragging(app, drag, list, cx);
+        return render_dragging(app, drag, list, window, cx);
     }
     let ghosts = |list: Div, ix: usize, cx: &mut Context<KurrencyApp>| {
         app.motion
@@ -70,13 +86,13 @@ pub(crate) fn render_list(
             .iter()
             .filter(|leaving| leaving.ix == ix)
             .fold(list, |list, leaving| {
-                list.child(render_ghost(app, leaving, cx))
+                list.child(render_ghost(app, leaving, window, cx))
             })
     };
     for ix in 1..app.rows.len() {
         list = ghosts(list, ix, cx);
         let code = app.rows[ix].code.clone();
-        let row = with_context_menu(render_row(app, ix, cx), &code, cx).into_any_element();
+        let row = with_context_menu(render_row(app, ix, window, cx), &code, cx).into_any_element();
         list = list.child(match app.motion.entering.get(&code) {
             Some(&version) => motion::resize(
                 row,
@@ -90,7 +106,7 @@ pub(crate) fn render_list(
     // Ghosts past the end (the last row was removed).
     let end = app.rows.len().max(1);
     for leaving in app.motion.leaving.iter().filter(|l| l.ix >= end) {
-        list = list.child(render_ghost(app, leaving, cx));
+        list = list.child(render_ghost(app, leaving, window, cx));
     }
     list
 }
@@ -101,6 +117,7 @@ fn render_dragging(
     app: &KurrencyApp,
     drag: &RowDrag,
     mut list: Div,
+    window: &Window,
     cx: &mut Context<KurrencyApp>,
 ) -> Div {
     let t = Tokens::get(cx);
@@ -123,7 +140,11 @@ fn render_dragging(
         }
         if let Some(&ix) = others.get(slot) {
             let code = app.rows[ix].code.clone();
-            list = list.child(with_context_menu(render_row(app, ix, cx), &code, cx));
+            list = list.child(with_context_menu(
+                render_row(app, ix, window, cx),
+                &code,
+                cx,
+            ));
         }
     }
     list
@@ -182,7 +203,7 @@ pub(crate) struct RowDrag {
 /// slightly larger surface with a soft shadow), moving only vertically.
 pub(crate) struct RowDragView {
     code: String,
-    value: Option<rust_decimal::Decimal>,
+    value: Option<Decimal>,
     fmt: money::Format,
     change: Change,
     green_up: bool,
@@ -195,9 +216,7 @@ impl RowDragView {
     pub(crate) fn new(app: &KurrencyApp, code: &str, window: &Window, cx: &App) -> Self {
         let anchor = app.anchor().unwrap_or_default();
         let rates = app.rates.read(cx);
-        let today = rates
-            .table()
-            .convert(rust_decimal::Decimal::ONE, anchor, code);
+        let today = rates.table().convert(Decimal::ONE, anchor, code);
         let previous = rates.previous().and_then(|p| p.cross_rate(anchor, code));
         Self {
             code: code.to_string(),
@@ -223,7 +242,7 @@ impl Render for RowDragView {
                 &code,
                 value,
                 &self.fmt,
-                AMOUNT_SIZE,
+                amount_size(&code, value, &self.fmt, window),
                 AMOUNT_WEIGHT,
                 t.decimals,
                 None,
@@ -304,7 +323,12 @@ fn grip(t: &Tokens, left: f32) -> impl IntoElement {
 }
 
 /// A removed row collapsing: a static copy of its flag, code and amount.
-fn render_ghost(app: &KurrencyApp, leaving: &Leaving, cx: &mut Context<KurrencyApp>) -> AnyElement {
+fn render_ghost(
+    app: &KurrencyApp,
+    leaving: &Leaving,
+    window: &Window,
+    cx: &mut Context<KurrencyApp>,
+) -> AnyElement {
     let t = Tokens::get(cx);
     let code = leaving.code.clone();
     let amount = app.value_of(&code, cx).map(|value| {
@@ -312,7 +336,7 @@ fn render_ghost(app: &KurrencyApp, leaving: &Leaving, cx: &mut Context<KurrencyA
             &code,
             value,
             &app.fmt,
-            AMOUNT_SIZE,
+            amount_size(&code, value, &app.fmt, window),
             AMOUNT_WEIGHT,
             t.decimals,
             None,
@@ -344,7 +368,12 @@ fn render_ghost(app: &KurrencyApp, leaving: &Leaving, cx: &mut Context<KurrencyA
     )
 }
 
-fn render_row(app: &KurrencyApp, ix: usize, cx: &mut Context<KurrencyApp>) -> Stateful<Div> {
+fn render_row(
+    app: &KurrencyApp,
+    ix: usize,
+    window: &Window,
+    cx: &mut Context<KurrencyApp>,
+) -> Stateful<Div> {
     let t = Tokens::get(cx);
     let row = &app.rows[ix];
     let code = row.code.clone();
@@ -355,11 +384,11 @@ fn render_row(app: &KurrencyApp, ix: usize, cx: &mut Context<KurrencyApp>) -> St
 
     let rates = app.rates.read(cx);
     let table = rates.table();
-    let today = table.convert(rust_decimal::Decimal::ONE, &anchor, &code);
+    let today = table.convert(Decimal::ONE, &anchor, &code);
     let previous = rates.previous().and_then(|p| p.cross_rate(&anchor, &code));
     let change = Change::between(today, previous);
     let inverse = table
-        .convert(rust_decimal::Decimal::ONE, &code, &anchor)
+        .convert(Decimal::ONE, &code, &anchor)
         .map(|rate| present::inverse_rate_text(&code, &anchor, rate, app.fmt.style.decimal));
 
     let amount = match app.value_of(&code, cx) {
@@ -367,7 +396,7 @@ fn render_row(app: &KurrencyApp, ix: usize, cx: &mut Context<KurrencyApp>) -> St
             &code,
             value,
             &app.fmt,
-            AMOUNT_SIZE,
+            amount_size(&code, value, &app.fmt, window),
             AMOUNT_WEIGHT,
             t.decimals,
             app.motion.roll(&code),
@@ -393,9 +422,12 @@ fn render_row(app: &KurrencyApp, ix: usize, cx: &mut Context<KurrencyApp>) -> St
             )
         });
 
+    // Lined up on the left and only as wide as they are, so a test can see
+    // the amount end before the chip.
     let amount_col = v_flex()
         .flex_1()
         .min_w(px(0.))
+        .items_start()
         .overflow_hidden()
         .child(amount)
         .when_some(inverse.filter(|_| hovered), |el, inverse| {

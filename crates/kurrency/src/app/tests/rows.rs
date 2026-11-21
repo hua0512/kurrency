@@ -269,3 +269,26 @@ fn motion_states_play_once(cx: &mut TestAppContext) {
     });
     app.read_with(cx, |app, _| assert!(app.closing.is_none()));
 }
+
+#[gpui_kit::test]
+fn long_amounts_shrink_to_fit(cx: &mut TestAppContext) {
+    // USD 1e12 is ¥150,000,000,000,000 and €900,000,000,000.00: at their
+    // full size both would run under the chip, and the anchor past the card.
+    let (_app, cx) = open_with(cx, None, settings(&["USD", "EUR", "JPY"], "1000000000000"));
+    cx.simulate_resize(gpui_kit::size(px(layout::metrics::WIDTH), px(700.)));
+    settle(cx);
+    for (amount, chip) in [("amount-EUR", "chip-EUR"), ("amount-JPY", "chip-JPY")] {
+        let amount = cx.debug_bounds(amount).unwrap();
+        let chip = cx.debug_bounds(chip).unwrap();
+        assert!(
+            amount.right() <= chip.left(),
+            "{amount:?} runs into {chip:?}"
+        );
+    }
+    let anchor = cx.debug_bounds("amount-USD").unwrap();
+    let card = cx.debug_bounds("anchor-amount").unwrap();
+    assert!(
+        anchor.right() <= card.right(),
+        "{anchor:?} overflows {card:?}"
+    );
+}

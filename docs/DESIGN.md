@@ -90,8 +90,9 @@ All motion is subtle, under 250 ms and interruptible:
 - **Typography.** Text uses the bundled Inter, with a Noto Sans SC subset (`Kurrency Sans SC`)
   as the CJK fallback. On Windows, where GPUI can only fall back to system fonts, the first
   installed system CJK font in `assets::CJK_FALLBACKS` draws instead. Amounts use tabular
-  numerals: 36px in the anchor and 18px in rows. Decimals are at 55% opacity (75% in Ink) and
-  currency symbols are muted.
+  numerals: 36px in the anchor and 18px in rows. An amount too long for its space (a large
+  IRR or VND figure) shrinks to fit, down to half that size, and is never cut off mid-number.
+  Decimals are at 55% opacity (75% in Ink) and currency symbols are muted.
 - **Shapes and sizes.**
   - Cards have radius 12 and chips radius 6.
   - Flags are 20×15 with radius 2.5 and a hairline ring.

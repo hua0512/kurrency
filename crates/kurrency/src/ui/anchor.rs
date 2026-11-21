@@ -12,8 +12,8 @@ use gpui_kit::component::{Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, BoxShadow, Context, FontFeatures, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, StatefulInteractiveElement as _, Styled as _, Window, div, hsla, px,
-    transparent_black,
+    ParentElement as _, StatefulInteractiveElement as _, Styled as _, TextRun, Window, div, hsla,
+    px, transparent_black,
 };
 use kurrency_core::i18n::tr;
 use kurrency_core::money;
@@ -67,7 +67,9 @@ pub(crate) fn amount_text(
             .map(|(ix, ch)| motion::roll_char(ch, offset + ix, roll, size))
             .collect::<Vec<_>>()
     };
+    let selector = format!("amount-{code}");
     h_flex()
+        .debug_selector(move || selector.clone())
         .items_baseline()
         .text_size(px(size))
         .font_weight(weight)
@@ -95,6 +97,71 @@ pub(crate) fn amount_text(
                 .children(motion::roll_exits(roll, size, decimals)),
         )
         .into_any_element()
+}
+
+/// The smallest size [`fit_size`] shrinks an amount to.
+const MIN_FIT: f32 = 0.5;
+
+/// The largest text size, up to `size`, at which [`amount_text`] fits in
+/// `width`: a long amount (`IRR 1,884,417,000,000`) shrinks rather than
+/// being cut off, which would show a different number. Not below half of
+/// `size`; past that the column clips.
+pub(crate) fn fit_size(
+    code: &str,
+    value: Decimal,
+    format: &money::Format,
+    size: f32,
+    weight: FontWeight,
+    width: f32,
+    window: &Window,
+) -> f32 {
+    let parts = present::amount_parts(code, value, format, assets::has_glyph);
+    let mut font = gpui_kit::font(assets::FONT_FAMILY);
+    font.weight = weight;
+    font.features = tabular_numerals();
+    let text_system = window.text_system();
+    let measure = |text: String, size: f32| {
+        let run = TextRun {
+            len: text.len(),
+            font: font.clone(),
+            color: hsla(0., 0., 0., 1.),
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        };
+        f32::from(
+            text_system
+                .shape_line(text.into(), px(size), &[run], None)
+                .width,
+        )
+    };
+    // As laid out: one element per digit (they roll), each rounded up to a
+    // whole pixel, which adds up over a long amount; the symbol is one
+    // element, then a quarter-em gap.
+    let laid_out = |size: f32| {
+        let digits: f32 = parts
+            .integer
+            .chars()
+            .chain(parts.fraction.chars())
+            .map(|ch| measure(ch.to_string(), size).ceil())
+            .sum();
+        digits
+            + parts.symbol.as_ref().map_or(0., |symbol| {
+                measure(symbol.clone(), size).ceil() + size * 0.25
+            })
+    };
+    let natural = laid_out(size);
+    if natural <= width {
+        return size;
+    }
+    // Text width scales with its size, but the rounding does not: start
+    // from the scaled size and step down half a pixel until it fits.
+    let min = size * MIN_FIT;
+    let mut fit = ((size * width / natural * 2.).floor() / 2.).max(min);
+    while fit > min && laid_out(fit) > width {
+        fit -= 0.5;
+    }
+    fit
 }
 
 /// What [`amount_text`] shows after the symbol (`1,250.00`), which digit
@@ -166,7 +233,16 @@ pub(crate) fn render(
                 &code,
                 value,
                 &app.fmt,
-                AMOUNT_SIZE,
+                fit_size(
+                    &code,
+                    value,
+                    &app.fmt,
+                    AMOUNT_SIZE,
+                    FontWeight::MEDIUM,
+                    // The card's border and 16px padding on each side.
+                    f32::from(window.viewport_size().width) - 2. * (metrics::PAD_X + 17.),
+                    window,
+                ),
                 FontWeight::MEDIUM,
                 t.decimals,
                 app.motion.roll(ANCHOR_ROLL),
