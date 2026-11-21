@@ -61,6 +61,16 @@
     <display_length compare="ge">360</display_length>
   </requires>
   <releases>
+    <release version="0.2.0" date="2026-11-21">
+      <description>
+        <ul>
+          <li>Settings: the themes are grouped into a light and a dark pair that fit the window, and System, Light and Dark are icons.</li>
+          <li>The selected item in the theme and history range switches is clear in the dark themes.</li>
+          <li>Long amounts shrink to fit instead of being cut off.</li>
+          <li>The history chart uses the window's spare height, and the high, low and average sit in one row.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-11-11">
       <description>
         <ul>
