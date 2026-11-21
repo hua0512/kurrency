@@ -8,7 +8,6 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::chart::AreaChart;
 use gpui_kit::component::skeleton::Skeleton;
 use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -25,6 +24,8 @@ use rust_decimal::Decimal;
 use crate::rates::history_provider::{HistoryError, HistoryProvider, SOURCE_LABEL};
 use crate::rates::store::RatesStore;
 use crate::ui::anchor::tabular_numerals;
+use crate::ui::segmented;
+use crate::ui::theme::Tokens;
 
 actions!(kurrency_detail, [Back]);
 
@@ -331,14 +332,54 @@ impl DetailView {
             ),
             None => format!("— {}", self.quote),
         };
+        // "1 USD =" and the change share the top line, which leaves the
+        // chart the height a short window has.
+        let change = match &self.derived.stats {
+            Some(stats) => {
+                let arrow = if stats.change.is_sign_negative() && !stats.change.is_zero() {
+                    "▼"
+                } else if stats.change.is_zero() {
+                    "•"
+                } else {
+                    "▲"
+                };
+                let pct = stats.change_pct.abs().round_dp(2);
+                let sign = if stats.change_pct.is_sign_negative() && !pct.is_zero() {
+                    "−"
+                } else if pct.is_zero() {
+                    ""
+                } else {
+                    "+"
+                };
+                div()
+                    .text_color(self.change_color(stats.change, cx))
+                    .whitespace_nowrap()
+                    .child(format!(
+                        "{arrow} {} ({sign}{}%) · {}",
+                        history::format_rate_in(stats.change.abs(), self.derived.dp, self.decimal),
+                        history::format_rate_in(pct, 2, self.decimal),
+                        self.range.label()
+                    ))
+                    .into_any_element()
+            }
+            None if self.loading => Skeleton::new().w(px(140.)).h(px(14.)).into_any_element(),
+            None => div().into_any_element(),
+        };
         v_flex()
-            .gap_1()
             .font_features(tabular_numerals())
             .child(
-                div()
+                h_flex()
+                    .h(px(18.))
+                    .gap_2()
+                    .justify_between()
                     .text_size(px(13.))
-                    .text_color(theme.muted_foreground)
-                    .child(tr!("detail.one_unit", code = self.base)),
+                    .child(
+                        div()
+                            .text_color(theme.muted_foreground)
+                            .whitespace_nowrap()
+                            .child(tr!("detail.one_unit", code = self.base)),
+                    )
+                    .child(change),
             )
             .child(
                 div()
@@ -347,42 +388,6 @@ impl DetailView {
                     .font_weight(FontWeight::NORMAL)
                     .child(figure),
             )
-            .map(|el| match &self.derived.stats {
-                Some(stats) => {
-                    let arrow = if stats.change.is_sign_negative() && !stats.change.is_zero() {
-                        "▼"
-                    } else if stats.change.is_zero() {
-                        "•"
-                    } else {
-                        "▲"
-                    };
-                    let pct = stats.change_pct.abs().round_dp(2);
-                    let sign = if stats.change_pct.is_sign_negative() && !pct.is_zero() {
-                        "−"
-                    } else if pct.is_zero() {
-                        ""
-                    } else {
-                        "+"
-                    };
-                    el.child(
-                        div()
-                            .text_size(px(13.))
-                            .text_color(self.change_color(stats.change, cx))
-                            .child(format!(
-                                "{arrow} {} ({sign}{}%) · {}",
-                                history::format_rate_in(
-                                    stats.change.abs(),
-                                    self.derived.dp,
-                                    self.decimal
-                                ),
-                                history::format_rate_in(pct, 2, self.decimal),
-                                self.range.label()
-                            )),
-                    )
-                }
-                None if self.loading => el.child(Skeleton::new().w(px(160.)).h(px(14.))),
-                None => el.child(div().h(px(18.))),
-            })
     }
 
     fn render_chart(&self, cx: &App) -> impl IntoElement {
@@ -443,27 +448,33 @@ impl DetailView {
                 .child(message)
                 .into_any_element()
         };
-        div().w_full().h(px(180.)).child(body)
+        // The chart takes what the page has left, between CHART_MIN_H
+        // (below that the page scrolls) and CHART_MAX_H (taller, a small move
+        // would look like a big one).
+        div()
+            .w_full()
+            .flex_1()
+            .min_h(px(CHART_MIN_H))
+            .max_h(px(CHART_MAX_H))
+            .child(body)
     }
 
     fn render_ranges(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected = Range::ALL
-            .iter()
-            .position(|r| *r == self.range)
-            .unwrap_or(1);
-        TabBar::new("detail-range")
-            .segmented()
+        let t = Tokens::get(cx);
+        segmented::bar(&t)
             .w_full()
-            .selected_index(selected)
-            .children(
-                Range::ALL
-                    .iter()
-                    .map(|r| Tab::new().label(r.label()).flex_1()),
-            )
-            .on_click(cx.listener(|this, ix: &usize, _, cx| {
-                if let Some(range) = Range::ALL.get(*ix) {
-                    this.set_range(*range, cx);
-                }
+            .children(Range::ALL.iter().map(|range| {
+                let range = *range;
+                segmented::segment(
+                    SharedString::from(format!("detail-range-{}", range.label())),
+                    range == self.range,
+                    &t,
+                )
+                .flex_1()
+                .text_size(px(13.))
+                .font_weight(FontWeight::MEDIUM)
+                .child(range.label())
+                .on_click(cx.listener(move |this, _, _, cx| this.set_range(range, cx)))
             }))
     }
 
@@ -472,45 +483,51 @@ impl DetailView {
         let stats = self.derived.stats.as_ref()?;
         let dp = self.derived.dp;
         let with_year = self.range.spans_years();
-        let row = |label: String, value: Decimal, date: Option<Date>, last: bool| {
-            h_flex()
-                .h(px(40.))
-                .text_size(px(14.))
-                .when(!last, |el| el.border_b_1().border_color(theme.border))
+        // High, Low and Average side by side: one compact row, so the chart
+        // keeps the height a short window has.
+        let column = |label: String, value: Decimal, date: Option<Date>| {
+            v_flex()
+                .flex_1()
+                .min_w(px(0.))
+                .gap(px(2.))
                 .child(
                     div()
-                        .w(px(96.))
+                        .text_size(px(12.))
                         .text_color(theme.muted_foreground)
                         .child(label),
                 )
                 .child(
                     div()
-                        .flex_1()
+                        .text_size(px(15.))
                         .font_weight(FontWeight::MEDIUM)
                         .child(history::format_rate_in(value, dp, self.decimal)),
                 )
                 .child(
                     div()
+                        .h(px(16.))
+                        .text_size(px(12.))
                         .text_color(theme.muted_foreground)
                         .when_some(date, |el, d| el.child(d.short(with_year))),
                 )
         };
         Some(
-            v_flex()
+            h_flex()
+                .flex_shrink_0()
+                .items_start()
+                .gap_3()
+                .pt_1()
                 .font_features(tabular_numerals())
-                .child(row(
+                .child(column(
                     tr!("detail.high"),
                     stats.high.rate,
                     Some(stats.high.date),
-                    false,
                 ))
-                .child(row(
+                .child(column(
                     tr!("detail.low"),
                     stats.low.rate,
                     Some(stats.low.date),
-                    false,
                 ))
-                .child(row(tr!("detail.average"), stats.average, None, true)),
+                .child(column(tr!("detail.average"), stats.average, None)),
         )
     }
 
@@ -569,17 +586,23 @@ impl Render for DetailView {
                     .min_h(px(0.))
                     .overflow_y_scroll()
                     .px_4()
-                    .pt_4()
+                    .pt_3()
                     .pb_2()
-                    .gap_4()
-                    .child(self.render_hero(cx))
+                    .gap_3()
+                    .child(div().flex_shrink_0().child(self.render_hero(cx)))
                     .child(self.render_chart(cx))
-                    .child(self.render_ranges(cx))
+                    .child(div().flex_shrink_0().child(self.render_ranges(cx)))
                     .children(self.render_stats(cx)),
             )
             .child(self.render_footer(cx))
     }
 }
+
+/// The shortest the history chart gets before the page scrolls: low
+/// enough that the stats still fit in the shortest window (440px).
+const CHART_MIN_H: f32 = 100.;
+/// The tallest the history chart grows in a tall window.
+const CHART_MAX_H: f32 = 260.;
 
 /// The page slide-in: 180ms ease-out from the right (docs/DESIGN.md §4).
 pub(crate) const SLIDE_DURATION: Duration = Duration::from_millis(180);

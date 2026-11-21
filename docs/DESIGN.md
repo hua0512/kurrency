@@ -114,9 +114,11 @@ All motion is subtle, under 250 ms and interruptible:
   shows the row's currency against the anchor. The title is the pair as BASE / QUOTE (`USD / EUR`,
   meaning 1 USD = x EUR), and ⇄ flips the pair.
 - **Content.**
-  - The current rate, and the change over the selected range.
-  - An area chart with a hover crosshair, and ranges 7D / 30D / 1Y / 5Y / MAX.
-  - High and low (with their dates) and the average.
+  - The current rate, with the change over the selected range on the line above it.
+  - An area chart with a hover crosshair, and ranges 7D / 30D / 1Y / 5Y / MAX. The chart takes
+    the height the page has left, from 100px (so the stats still fit in the shortest window)
+    to 260px (taller, a small move would look like a big one).
+  - High and low (with their dates) and the average, side by side in one row.
 - **Data.** History is cached per pair, and only missing days are fetched. Offline with no cache,
   the page says "History unavailable offline".
 
