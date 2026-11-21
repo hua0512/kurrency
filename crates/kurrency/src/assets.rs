@@ -168,6 +168,9 @@ const FLAGS_PREFIX: &str = "flags/";
 /// The app icon (`assets/icon.svg`), shown in Settings → About.
 const ICON: (&str, &[u8]) = (crate::ui::settings::ICON_PATH, embed!(bytes: "icon.svg"));
 
+// Icons beyond gpui-kit's default set: Settings → Theme's "System".
+gpui_kit::assets::icon_assets!(ExtraIcons, [Monitor]);
+
 pub(crate) struct Assets;
 
 impl AssetSource for Assets {
@@ -179,11 +182,15 @@ impl AssetSource for Assets {
         if path == ICON.0 {
             return Ok(Some(Cow::Borrowed(ICON.1)));
         }
+        if let Some(data) = ExtraIcons.load(path)? {
+            return Ok(Some(data));
+        }
         gpui_kit::assets::Assets.load(path)
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
         let mut list = gpui_kit::assets::Assets.list(path)?;
+        list.extend(ExtraIcons.list(path)?);
         list.extend(
             FLAGS
                 .iter()
@@ -294,6 +301,8 @@ mod tests {
         // Everything else is gpui-kit's icons.
         let check = gpui_kit::assets::IconName::Check.path();
         assert!(Assets.load(&check).unwrap().is_some());
+        let monitor = gpui_kit::assets::IconName::Monitor.path();
+        assert!(Assets.load(&monitor).unwrap().is_some());
     }
 
     /// `img()` passes bytes that are not a raster format to GPUI's SVG

@@ -7,7 +7,6 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::tab::{Tab, TabBar};
 use gpui_kit::component::{IconName, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -27,6 +26,7 @@ use crate::app::{KurrencyApp, RefreshRates};
 use crate::rates::store::RatesStore;
 use crate::ui::anchor::tabular_numerals;
 use crate::ui::flag::mini_flag;
+use crate::ui::segmented;
 use crate::ui::theme::{CHIP_TINT, SYMBOL_OPACITY, Tokens};
 
 actions!(kurrency_settings, [Back]);
@@ -133,7 +133,12 @@ impl Render for SettingsView {
         let appearance = section(
             tr!("settings.appearance"),
             vec![
-                row(tr!("settings.theme"), theme_mode(&prefs, &app), &t),
+                row_with_note(
+                    tr!("settings.theme"),
+                    theme_mode_note(prefs.theme_mode),
+                    theme_mode(&prefs, &app, &t),
+                    &t,
+                ),
                 gallery(&prefs, &app, cx).into_any_element(),
                 row(
                     tr!("settings.up_down"),
@@ -439,120 +444,186 @@ fn choice<T: Copy + PartialEq + 'static>(
         .into_any_element()
 }
 
-/// System / Light / Dark.
-fn theme_mode(prefs: &Settings, app: &WeakEntity<KurrencyApp>) -> AnyElement {
-    const MODES: [ThemeMode; 3] = [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark];
-    let label = |mode: ThemeMode| match mode {
-        ThemeMode::System => tr!("settings.mode_system"),
-        ThemeMode::Light => tr!("settings.mode_light"),
-        ThemeMode::Dark => tr!("settings.mode_dark"),
-    };
-    let selected = MODES
-        .iter()
-        .position(|mode| *mode == prefs.theme_mode)
-        .unwrap_or(0);
-    let app = app.clone();
-    TabBar::new("theme-mode")
-        .segmented()
-        .small()
-        .w(px(196.))
-        .selected_index(selected)
-        .children(
-            MODES
-                .iter()
-                .map(|mode| Tab::new().label(label(*mode)).flex_1()),
+/// Label left over a muted note, control right.
+fn row_with_note(label: String, note: String, control: AnyElement, t: &Tokens) -> AnyElement {
+    h_flex()
+        .min_h(px(54.))
+        .pl(px(14.))
+        .pr(px(10.))
+        .py(px(6.))
+        .gap_3()
+        .justify_between()
+        .child(
+            v_flex()
+                .min_w(px(0.))
+                .child(div().text_size(px(14.)).text_color(t.text).child(label))
+                .child(div().text_size(px(12.)).text_color(t.muted).child(note)),
         )
-        .on_click(move |ix, window, cx| {
-            if let Some(mode) = MODES.get(*ix) {
-                let mode = *mode;
-                change(&app, window, cx, |s| s.theme_mode = mode);
-            }
-        })
+        .child(control)
         .into_any_element()
 }
 
-const CARD_W: f32 = 140.;
-const PREVIEW_H: f32 = 127.;
+/// What the theme mode does, under the Theme label.
+fn theme_mode_note(mode: ThemeMode) -> String {
+    match mode {
+        ThemeMode::System => tr!("settings.mode_system_note"),
+        ThemeMode::Light => tr!("settings.mode_light_note"),
+        ThemeMode::Dark => tr!("settings.mode_dark_note"),
+    }
+}
 
-/// The theme gallery: a live miniature of each theme, scrolling sideways.
-/// Clicking a card picks it for its mode (light or dark).
+/// System / Light / Dark, as icons: a monitor, a sun and a moon.
+fn theme_mode(prefs: &Settings, app: &WeakEntity<KurrencyApp>, t: &Tokens) -> AnyElement {
+    use gpui_kit::assets::IconName as Icons;
+    let modes = [
+        (
+            ThemeMode::System,
+            Icons::Monitor,
+            tr!("settings.mode_system"),
+        ),
+        (ThemeMode::Light, Icons::Sun, tr!("settings.mode_light")),
+        (ThemeMode::Dark, Icons::Moon, tr!("settings.mode_dark")),
+    ];
+    segmented::bar(t)
+        .children(modes.into_iter().map(|(mode, icon, label)| {
+            let app = app.clone();
+            let name = format!("theme-mode-{mode:?}").to_lowercase();
+            segmented::segment(
+                SharedString::from(name.clone()),
+                mode == prefs.theme_mode,
+                t,
+            )
+            .debug_selector(move || name.clone())
+            .w(px(36.))
+            .child(gpui_kit::component::Icon::new(icon).size(px(16.)))
+            .tooltip(move |window, cx| {
+                gpui_kit::component::tooltip::Tooltip::new(label.clone()).build(window, cx)
+            })
+            .on_click(move |_, window, cx| {
+                change(&app, window, cx, |s| s.theme_mode = mode);
+            })
+        }))
+        .into_any_element()
+}
+
+const PREVIEW_H: f32 = 96.;
+
+/// The theme gallery: the light pair and the dark pair, two cards a row,
+/// each pair with one choice. Only the pairs the mode can show are listed
+/// (System shows both).
 fn gallery(prefs: &Settings, app: &WeakEntity<KurrencyApp>, cx: &App) -> impl IntoElement {
     let t = Tokens::get(cx);
-    let active = if cx_is_dark(cx) {
-        prefs.theme_dark
-    } else {
-        prefs.theme_light
+    let (light, dark) = match prefs.theme_mode {
+        ThemeMode::System => (true, true),
+        ThemeMode::Light => (true, false),
+        ThemeMode::Dark => (false, true),
     };
-    div()
+    v_flex()
         .id("theme-gallery")
         .debug_selector(|| "theme-gallery".into())
-        .w_full()
-        .overflow_x_scroll()
+        .px(px(14.))
+        .pt(px(2.))
+        .pb(px(14.))
+        .gap(px(12.))
+        .when(light, |el| {
+            el.child(theme_pair(
+                tr!("settings.mode_light"),
+                prefs.theme_light,
+                false,
+                app,
+                &t,
+            ))
+        })
+        .when(dark, |el| {
+            el.child(theme_pair(
+                tr!("settings.mode_dark"),
+                prefs.theme_dark,
+                true,
+                app,
+                &t,
+            ))
+        })
+}
+
+/// One mode's two themes side by side, the chosen one ringed and checked.
+fn theme_pair(
+    caption: String,
+    chosen: ThemeId,
+    dark: bool,
+    app: &WeakEntity<KurrencyApp>,
+    t: &Tokens,
+) -> impl IntoElement {
+    v_flex()
+        .gap(px(6.))
         .child(
-            h_flex()
-                .px(px(12.))
-                .pt(px(2.))
-                .pb(px(12.))
-                .gap(px(10.))
-                .children(ThemeId::ALL.into_iter().map(|id| {
-                    let chosen = id == prefs.theme_light || id == prefs.theme_dark;
-                    let app_entity = app.clone();
-                    v_flex()
-                        .id(SharedString::from(format!("theme-{}", id.label())))
-                        .debug_selector(move || format!("theme-{}", id.label().to_lowercase()))
-                        .w(px(CARD_W))
-                        .flex_shrink_0()
-                        .gap(px(6.))
-                        .cursor_pointer()
-                        .child(
-                            div()
-                                .p(px(2.))
-                                .rounded(px(12.))
-                                .border_2()
-                                .border_color(if id == active {
-                                    t.accent
-                                } else {
-                                    gpui_kit::transparent_black()
-                                })
-                                .child(preview(id)),
-                        )
-                        .child(
-                            h_flex()
-                                .px(px(4.))
-                                .gap_1()
-                                .text_size(px(12.))
-                                .child(div().font_weight(FontWeight::MEDIUM).child(theme_label(id)))
-                                .child(div().text_color(t.muted).child(if id.is_dark() {
-                                    tr!("settings.mode_dark")
-                                } else {
-                                    tr!("settings.mode_light")
-                                }))
-                                .when(chosen, |el| {
-                                    el.child(div().flex_1()).child(
-                                        gpui_kit::component::Icon::new(IconName::Check)
-                                            .size(px(14.))
-                                            .text_color(t.accent),
+            div()
+                .pl(px(4.))
+                .text_size(px(11.))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(t.muted)
+                .child(caption),
+        )
+        .child(
+            h_flex().gap(px(10.)).children(
+                ThemeId::ALL
+                    .into_iter()
+                    .filter(|id| id.is_dark() == dark)
+                    .map(|id| {
+                        let selected = id == chosen;
+                        let app = app.clone();
+                        v_flex()
+                            .id(SharedString::from(format!("theme-{}", id.label())))
+                            .debug_selector(move || format!("theme-{}", id.label().to_lowercase()))
+                            .flex_1()
+                            .min_w(px(0.))
+                            .gap(px(5.))
+                            .cursor_pointer()
+                            .child(
+                                div()
+                                    .p(px(2.))
+                                    .rounded(px(12.))
+                                    .border_2()
+                                    .border_color(if selected {
+                                        t.accent
+                                    } else {
+                                        gpui_kit::transparent_black()
+                                    })
+                                    .child(preview(id)),
+                            )
+                            .child(
+                                h_flex()
+                                    .px(px(4.))
+                                    .gap_1()
+                                    .text_size(px(12.))
+                                    .child(
+                                        div()
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .when(!selected, |el| el.text_color(t.muted))
+                                            .child(theme_label(id)),
                                     )
-                                }),
-                        )
-                        .on_click(move |_, window, cx| {
-                            change(&app_entity, window, cx, |s| {
-                                if id.is_dark() {
-                                    s.theme_dark = id;
-                                } else {
-                                    s.theme_light = id;
-                                }
-                            });
-                        })
-                })),
+                                    .when(selected, |el| {
+                                        el.child(div().flex_1()).child(
+                                            gpui_kit::component::Icon::new(IconName::Check)
+                                                .size(px(14.))
+                                                .text_color(t.accent),
+                                        )
+                                    }),
+                            )
+                            .on_click(move |_, window, cx| {
+                                change(&app, window, cx, |s| {
+                                    if dark {
+                                        s.theme_dark = id;
+                                    } else {
+                                        s.theme_light = id;
+                                    }
+                                });
+                            })
+                    }),
+            ),
         )
 }
 
-fn cx_is_dark(cx: &App) -> bool {
-    Tokens::get(cx).dark
-}
-
-/// A miniature of the main window in a theme: the anchor card and two rows.
+/// A miniature of the main window in a theme: the anchor card and a row.
 fn preview(id: ThemeId) -> impl IntoElement {
     let p = Tokens::of(id);
     let amount = |symbol: &'static str, int: &'static str, frac: &'static str, size: f32| {
@@ -572,46 +643,38 @@ fn preview(id: ThemeId) -> impl IntoElement {
                 el.child(div().opacity(p.decimals).child(frac))
             })
     };
-    let mini_row = |code: &'static str, symbol, int, frac, up: bool, last: bool| {
-        let color = if up { p.green } else { p.red };
-        v_flex()
-            .child(
-                h_flex()
-                    .h(px(19.))
-                    .px(px(3.))
-                    .gap(px(4.))
-                    .child(mini_flag(code, 10., p.hairline))
-                    .child(
-                        div()
-                            .w(px(18.))
-                            .flex_shrink_0()
-                            .text_size(px(7.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(code),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w(px(0.))
-                            .child(amount(symbol, int, frac, 9.)),
-                    )
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .px(px(3.))
-                            .py(px(1.))
-                            .rounded(px(3.))
-                            .bg(color.opacity(CHIP_TINT * 1.5))
-                            .text_color(color)
-                            .text_size(px(6.))
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(if up { "▲ 0.1%" } else { "▼ 0.3%" }),
-                    ),
-            )
-            .when(!last, |el| {
-                el.child(div().ml(px(25.)).mr(px(3.)).h(px(1.)).bg(p.hairline))
-            })
-    };
+    // One converted row, falling (the chip shows the theme's red).
+    let mini_row = h_flex()
+        .h(px(19.))
+        .px(px(3.))
+        .gap(px(4.))
+        .child(mini_flag("EUR", 10., p.hairline))
+        .child(
+            div()
+                .w(px(18.))
+                .flex_shrink_0()
+                .text_size(px(7.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child("EUR"),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.))
+                .child(amount("€", "89", ".17", 9.)),
+        )
+        .child(
+            div()
+                .flex_shrink_0()
+                .px(px(3.))
+                .py(px(1.))
+                .rounded(px(3.))
+                .bg(p.red.opacity(CHIP_TINT * 1.5))
+                .text_color(p.red)
+                .text_size(px(6.))
+                .font_weight(FontWeight::MEDIUM)
+                .child("▼ 0.3%"),
+        );
     // The title bar with the freshness dot, in the accent.
     let header = h_flex()
         .h(px(9.))
@@ -621,27 +684,6 @@ fn preview(id: ThemeId) -> impl IntoElement {
         .child("Kurrency")
         .child(div().flex_1())
         .child(div().size(px(4.)).rounded_full().bg(p.accent));
-    // The quick-amount chips, "100" selected as the anchor card shows it.
-    let chips = h_flex()
-        .gap(px(3.))
-        .children(["10", "100", "1k", "10k"].map(|label| {
-            let selected = label == "100";
-            div()
-                .flex_1()
-                .h(px(10.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(3.))
-                .border_1()
-                .border_color(if selected { p.accent } else { p.hairline })
-                .when(selected && p.accent_fill > 0., |el| {
-                    el.bg(p.accent.opacity(p.accent_fill))
-                })
-                .text_size(px(5.5))
-                .text_color(if selected { p.accent } else { p.text })
-                .child(label)
-        }));
     v_flex()
         .w_full()
         .h(px(PREVIEW_H))
@@ -691,9 +733,7 @@ fn preview(id: ThemeId) -> impl IntoElement {
                         .child(amount("$", "100", ".00", 16.)),
                 ),
         )
-        .child(chips)
-        .child(mini_row("EUR", "€", "89", ".17", false, false))
-        .child(mini_row("JPY", "¥", "15,818", "", true, true))
+        .child(mini_row)
 }
 
 /// The About footer.

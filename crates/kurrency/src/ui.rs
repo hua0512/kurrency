@@ -8,6 +8,7 @@ pub(crate) mod inert;
 pub(crate) mod motion;
 pub(crate) mod picker;
 pub(crate) mod row;
+pub(crate) mod segmented;
 pub(crate) mod settings;
 pub(crate) mod theme;
 pub(crate) mod toast;

@@ -130,6 +130,11 @@ fn settings_page_applies_and_saves(cx: &mut TestAppContext) {
         assert_eq!(app.prefs.theme_dark, settings::ThemeId::Ink);
         assert_eq!(app.prefs.theme_light, settings::ThemeId::Slate);
     });
+    // The mode switch's moon picks Dark.
+    click(cx, "theme-mode-dark");
+    app.read_with(cx, |app, _| {
+        assert_eq!(app.prefs.theme_mode, settings::ThemeMode::Dark);
+    });
 
     // Number format and decimal places apply at once.
     cx.update(|window, cx| {
