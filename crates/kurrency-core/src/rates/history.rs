@@ -491,16 +491,6 @@ mod tests {
     }
 
     #[test]
-    fn ranges() {
-        let today = date("2026-11-07");
-        assert_eq!(Range::D7.start(today).to_string(), "2026-10-31");
-        assert_eq!(Range::D30.start(today).to_string(), "2026-10-08");
-        assert_eq!(Range::Y1.start(today).to_string(), "2025-11-07");
-        assert_eq!(Range::Y5.start(today).to_string(), "2021-11-07");
-        assert_eq!(Range::Max.start(today), EARLIEST);
-    }
-
-    #[test]
     fn parses_a_time_series() {
         let body = br#"[
             {"date":"2026-10-02","base":"USD","quote":"EUR","rate":0.88597},

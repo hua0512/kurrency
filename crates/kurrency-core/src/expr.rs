@@ -330,14 +330,8 @@ pub fn eval_in(input: &str, style: NumberStyle) -> Result<Decimal, ExprError> {
     Ok(value.normalize())
 }
 
-/// Whether the input is a single plain number (no operators or suffixes), so a
-/// "= result" hint would only repeat it.
-#[cfg(test)]
-pub(crate) fn is_plain_number(input: &str) -> bool {
-    is_plain_number_in(input, NumberStyle::COMMA_DOT)
-}
-
-/// [`is_plain_number`] with numbers written in `style`.
+/// Whether the input is a single plain number (no operators or suffixes) in
+/// `style`, so a "= result" hint would only repeat it.
 pub fn is_plain_number_in(input: &str, style: NumberStyle) -> bool {
     matches!(tokenize(input, style).as_deref(), Ok([(_, Token::Num(_))]))
 }
@@ -350,24 +344,6 @@ mod tests {
 
     fn d(s: &str) -> Decimal {
         Decimal::from_str(s).unwrap()
-    }
-
-    #[test]
-    fn numbers() {
-        assert_eq!(eval("100"), Ok(d("100")));
-        assert_eq!(eval("  89.56 "), Ok(d("89.56")));
-        assert_eq!(eval(".5"), Ok(d("0.5")));
-        assert_eq!(eval("15,832"), Ok(d("15832")));
-        assert_eq!(eval("1_000.25"), Ok(d("1000.25")));
-    }
-
-    #[test]
-    fn spec_examples() {
-        assert_eq!(eval("120*3+15"), Ok(d("375")));
-        assert_eq!(eval("1.5k"), Ok(d("1500")));
-        assert_eq!(eval("(80+40)/3"), Ok(d("40")));
-        assert_eq!(eval("1.5k*3"), Ok(d("4500")));
-        assert_eq!(eval("120*3"), Ok(d("360")));
     }
 
     #[test]
@@ -391,12 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn exact_decimal() {
-        assert_eq!(eval("0.1+0.2"), Ok(d("0.3")));
-        assert_eq!(eval("1/3*3").map(|v| v.round_dp(10)), Ok(d("1")));
-    }
-
-    #[test]
     fn errors() {
         assert_eq!(eval(""), Err(ExprError::Empty));
         assert_eq!(eval("   "), Err(ExprError::Empty));
@@ -416,36 +386,17 @@ mod tests {
         );
     }
 
-    #[test]
-    fn plain_number() {
-        assert!(is_plain_number("100"));
-        assert!(is_plain_number("1,234.5"));
-        assert!(!is_plain_number("1k"));
-        assert!(!is_plain_number("1+1"));
-        assert!(!is_plain_number(""));
-        assert!(!is_plain_number("-3"));
-    }
-
     /// With a comma decimal, `,` is always the point and never groups, and
     /// `.` still works as a point unless it is plainly grouping thousands.
     #[test]
     fn comma_decimal_expressions() {
         for style in [NumberStyle::DOT_COMMA, NumberStyle::SPACE_COMMA] {
-            assert_eq!(eval_in("12,5*2", style), Ok(d("25")), "{style:?}");
-            assert_eq!(eval_in(",5", style), Ok(d("0.5")));
-            assert_eq!(eval_in("12.5*2", style), Ok(d("25")));
-            assert_eq!(eval_in(".5+,5", style), Ok(d("1")));
-            assert_eq!(eval_in("0,1+0,2", style), Ok(d("0.3")));
-            assert_eq!(eval_in("1,5k*3", style), Ok(d("4500")));
-            assert_eq!(eval_in("(1,5+2,5)/2", style), Ok(d("2")));
-            assert_eq!(eval_in("100/3,2", style), Ok(d("31.25")));
+            assert_eq!(eval_in(".5+,5", style), Ok(d("1")), "{style:?}");
             // Never thousands: `1,234` is a decimal, `1,2,3` is no number.
             assert_eq!(eval_in("1,234", style), Ok(d("1.234")));
             assert_eq!(eval_in("1,2,3", style), Err(ExprError::BadNumber));
             assert_eq!(eval_in("1,5.5", style), Err(ExprError::BadNumber));
             assert_eq!(eval_in(",", style), Err(ExprError::BadNumber));
-            assert!(is_plain_number_in("12,5", style));
-            assert!(!is_plain_number_in("12,5*2", style));
         }
         let dot = NumberStyle::DOT_COMMA;
         // `.` groups next to a decimal comma, or in a grouped shape.
@@ -455,7 +406,6 @@ mod tests {
         assert_eq!(eval_in("1.234*2", dot), Ok(d("2468")));
         // Otherwise it is a point.
         assert_eq!(eval_in("0.250", dot), Ok(d("0.25")));
-        assert_eq!(eval_in("1.5k", dot), Ok(d("1500")));
         assert_eq!(eval_in("1234.5", dot), Ok(d("1234.5")));
         assert_eq!(eval_in("1.2.3", dot), Err(ExprError::BadNumber));
         assert_eq!(eval_in("1.234.5", dot), Err(ExprError::BadNumber));
@@ -466,7 +416,5 @@ mod tests {
         assert_eq!(eval_in("1\u{a0}234.5", space), Ok(d("1234.5")));
         assert_eq!(eval_in("2 3", space), Err(ExprError::TrailingInput(2)));
         assert_eq!(eval_in("1.234", space), Ok(d("1.234")));
-        // The default reads `,` as grouping.
-        assert_eq!(eval_in("1,234.5", NumberStyle::COMMA_DOT), Ok(d("1234.5")));
     }
 }

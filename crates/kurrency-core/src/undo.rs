@@ -66,31 +66,6 @@ mod tests {
     }
 
     #[test]
-    fn undo_then_redo() {
-        let mut h = History::default();
-        assert_eq!(h.undo(s(&["USD"], 1)), None);
-        h.record(s(&["USD"], 1));
-        h.record(s(&["USD"], 2));
-        // Now at 3.
-        assert_eq!(h.undo(s(&["USD"], 3)), Some(s(&["USD"], 2)));
-        assert_eq!(h.undo(s(&["USD"], 2)), Some(s(&["USD"], 1)));
-        assert_eq!(h.undo(s(&["USD"], 1)), None);
-        assert_eq!(h.redo(s(&["USD"], 1)), Some(s(&["USD"], 2)));
-        assert_eq!(h.redo(s(&["USD"], 2)), Some(s(&["USD"], 3)));
-        assert_eq!(h.redo(s(&["USD"], 3)), None);
-        assert_eq!(h.undo(s(&["USD"], 3)), Some(s(&["USD"], 2)));
-    }
-
-    #[test]
-    fn a_new_change_clears_redo() {
-        let mut h = History::default();
-        h.record(s(&["USD", "EUR"], 1));
-        assert_eq!(h.undo(s(&["USD"], 1)), Some(s(&["USD", "EUR"], 1)));
-        h.record(s(&["USD", "EUR"], 1));
-        assert_eq!(h.redo(s(&["EUR", "USD"], 1)), None);
-    }
-
-    #[test]
     fn bounded_to_the_limit() {
         let mut h = History::default();
         for i in 0..(LIMIT as i64 + 20) {

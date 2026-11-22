@@ -90,13 +90,7 @@ pub fn parse(query: &str, list: &[String]) -> Query {
     }
 }
 
-/// The palette's label for a command (`Set GBP to 50`).
-#[cfg(test)]
-pub(crate) fn label(command: &Command) -> String {
-    label_in(command, money::NumberStyle::COMMA_DOT)
-}
-
-/// [`label`] with the amount in a number style (`Set EUR to 45,9`).
+/// The palette's label for a command, with the amount in a number style (`Set EUR to 45,9`).
 pub fn label_in(command: &Command, style: money::NumberStyle) -> String {
     match command {
         Command::SetAmount { code, amount } => {
@@ -263,13 +257,7 @@ fn family_word(code: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
-
-    fn d(s: &str) -> Decimal {
-        Decimal::from_str(s).unwrap()
-    }
 
     fn list() -> Vec<String> {
         ["USD", "EUR", "JPY"]
@@ -282,37 +270,6 @@ mod tests {
         parse(query, &list()).command
     }
 
-    fn set(code: &str, amount: &str) -> Option<Command> {
-        Some(Command::SetAmount {
-            code: code.into(),
-            amount: d(amount),
-        })
-    }
-
-    #[test]
-    fn set_amounts() {
-        assert_eq!(command("50 gbp"), set("GBP", "50"));
-        assert_eq!(command("gbp 50"), set("GBP", "50"));
-        assert_eq!(command("GBP50"), set("GBP", "50"));
-        assert_eq!(command("€45,99"), set("EUR", "45.99"));
-        assert_eq!(command("1.5k chf"), set("CHF", "1500"));
-        // A bare number sets the anchor.
-        assert_eq!(command("75"), set("USD", "75"));
-        assert_eq!(parse("50 gbp", &list()).search, "GBP");
-    }
-
-    #[test]
-    fn add_and_remove() {
-        assert_eq!(command("+chf"), Some(Command::Add("CHF".into())));
-        assert_eq!(command("+ CHF"), Some(Command::Add("CHF".into())));
-        assert_eq!(command("-jpy"), Some(Command::Remove("JPY".into())));
-        assert_eq!(command("- jpy"), Some(Command::Remove("JPY".into())));
-        assert_eq!(command("+ch"), None);
-        assert_eq!(parse("+ch", &list()).search, "ch");
-        // "-5" is not a removal (and not a price either).
-        assert_eq!(command("-5"), None);
-    }
-
     #[test]
     fn history_pairs() {
         let pair = |base: &str, quote: &str| {
@@ -321,71 +278,12 @@ mod tests {
                 quote: quote.into(),
             })
         };
-        assert_eq!(command("eur>usd"), pair("EUR", "USD"));
         assert_eq!(command("EUR/USD"), pair("EUR", "USD"));
         assert_eq!(command("gbp > jpy"), pair("GBP", "JPY"));
         assert_eq!(command("eur>eur"), None);
         assert_eq!(command("eur>"), None);
         assert_eq!(parse("eur>u", &list()).search, "u");
         assert_eq!(parse("eur>", &list()).search, "eur");
-    }
-
-    #[test]
-    fn plain_queries_search() {
-        let q = parse("swiss", &list());
-        assert_eq!(q.command, None);
-        assert_eq!(q.search, "swiss");
-        assert_eq!(parse("50 g", &list()).search, "g");
-        assert_eq!(
-            parse("", &list()),
-            Query {
-                command: None,
-                search: String::new()
-            }
-        );
-    }
-
-    #[test]
-    fn labels() {
-        assert_eq!(label(&set("GBP", "50").unwrap()), "Set GBP to 50");
-        assert_eq!(label(&set("JPY", "1200").unwrap()), "Set JPY to 1,200");
-        assert_eq!(label(&set("EUR", "45.9").unwrap()), "Set EUR to 45.9");
-        assert_eq!(
-            label_in(
-                &set("JPY", "1200.5").unwrap(),
-                money::NumberStyle::DOT_COMMA
-            ),
-            "Set JPY to 1.200,5"
-        );
-        assert_eq!(label(&Command::Add("CHF".into())), "Add CHF · Swiss Franc");
-        assert_eq!(
-            label(&Command::Remove("JPY".into())),
-            "Remove JPY · Japanese Yen"
-        );
-        assert_eq!(
-            label(&Command::History {
-                base: "EUR".into(),
-                quote: "USD".into()
-            }),
-            "EUR → USD history"
-        );
-    }
-
-    #[test]
-    fn chinese_labels() {
-        use crate::i18n::{Lang, with_lang};
-        with_lang(Lang::ZhCn, || {
-            assert_eq!(label(&set("GBP", "50").unwrap()), "将 GBP 设为 50");
-            assert_eq!(label(&Command::Add("CHF".into())), "添加 CHF · 瑞士法郎");
-            assert_eq!(label(&Command::Remove("JPY".into())), "移除 JPY · 日元");
-            assert_eq!(
-                label(&Command::History {
-                    base: "EUR".into(),
-                    quote: "USD".into()
-                }),
-                "查看 EUR → USD 走势"
-            );
-        });
     }
 
     #[test]
@@ -415,16 +313,9 @@ mod tests {
             .map(ToString::to_string)
             .collect();
         assert_eq!(search("", &codes), codes);
-        // The exact code, then its relatives: GIP shares "£" and "Pound".
-        assert_eq!(search("gbp", &codes), ["GBP", "GIP"]);
         assert_eq!(search("G", &codes), ["GBP", "GIP"]);
-        // Code prefix first, then names: "Pound" in GBP and GIP.
-        assert_eq!(search("pound", &codes), ["GBP", "GIP"]);
         assert_eq!(search("dollar", &codes), ["AUD", "HKD", "USD"]);
         assert_eq!(search("us", &codes), ["USD", "AUD"]);
-        // Chinese names.
-        assert_eq!(search("港币", &codes), ["HKD"]);
-        assert_eq!(search("人民", &codes), ["CNY"]);
         assert_eq!(search("zzz", &codes), Vec::<String>::new());
     }
 

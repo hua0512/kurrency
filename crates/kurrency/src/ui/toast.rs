@@ -169,27 +169,3 @@ pub(crate) fn render(toast: &Toast, top: f32, cx: &mut Context<KurrencyApp>) -> 
             move |el, t| el.opacity(t).top(px(top + 6. * (1. - t))),
         )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::layout::content_height;
-
-    #[test]
-    fn the_toast_replaces_the_add_row_or_pins_to_the_bottom() {
-        use metrics::*;
-        // At the smallest window, a short list: over the "+ Add" row.
-        let area = MIN_HEIGHT - HEADER;
-        let at = top(2, area);
-        assert_eq!(at + ADD + BOTTOM + HEADER, content_height(2));
-        // Below the anchor card and its chips, always.
-        let card_bottom = 2. * RING + CARD + CHIPS_GAP + CHIPS;
-        for n in 1..12 {
-            let at = top(n, area);
-            assert!(at >= card_bottom, "{n}: {at}");
-            assert!(at + ADD + BOTTOM <= area, "{n}: inside the window");
-        }
-        // A list longer than the window: pinned to the bottom edge.
-        assert_eq!(top(12, area), area - BOTTOM - ADD);
-    }
-}

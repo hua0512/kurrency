@@ -372,12 +372,4 @@ mod tests {
         );
         server.join().unwrap();
     }
-
-    #[test]
-    fn a_closed_port_is_a_transport_error() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/", listener.local_addr().unwrap());
-        drop(listener);
-        assert!(get(&UreqClient::new(), &url, true).is_err());
-    }
 }

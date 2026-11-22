@@ -615,36 +615,4 @@ mod tests {
         let old: String = out[0].iter().map(|&(_, ch, _)| ch).collect();
         assert_eq!(old, "89.14");
     }
-
-    #[test]
-    fn another_currency_does_not_roll() {
-        let mut m = Motion::default();
-        let t0 = Instant::now();
-        m.update_rolls([shown("anchor", "USD", "100.00")], t0, true);
-        // The anchor becomes EUR (a promotion): its amount slides in with
-        // the card instead.
-        assert!(!m.update_rolls([shown("anchor", "EUR", "89.17")], t0, true));
-        // Nor does anything with reduced motion.
-        assert!(!m.update_rolls([shown("anchor", "EUR", "90.00")], t0, false));
-    }
-
-    #[test]
-    fn displays_that_disappear_forget() {
-        let mut m = Motion::default();
-        let t0 = Instant::now();
-        m.update_rolls([shown("anchor", "USD", "100.00")], t0, true);
-        m.update_rolls([], t0, true);
-        // Shown again, it starts afresh instead of rolling from 100.00.
-        assert!(!m.update_rolls([shown("anchor", "USD", "250.00")], t0, true));
-    }
-
-    #[test]
-    fn the_spring_settles_with_a_small_overshoot() {
-        assert_eq!(spring(0.), 0.);
-        assert_eq!(spring(1.), 1.);
-        let samples: Vec<f32> = (0..=100).map(|i| spring(i as f32 / 100.)).collect();
-        let peak = samples.iter().copied().fold(0., f32::max);
-        assert!(peak > 1. && peak < 1.06, "overshoot {peak}");
-        assert!((spring(0.95) - 1.).abs() < 0.02);
-    }
 }

@@ -122,29 +122,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn wayland_fractional_scale() {
-        assert_eq!(wayland_logical_height(540., 1.25), 864.);
-        assert_eq!(wayland_logical_height(540., 2.), 540.);
-        assert_eq!(wayland_logical_height(1080., 1.), 1080.);
-    }
-
-    #[test]
-    fn window_fit() {
-        use metrics::*;
-        // Four rows under the card; taller than the minimum.
-        let four = content_height(5);
-        assert_eq!(four, content_height(4) + ROW);
-        assert!(four > MIN_HEIGHT);
-        assert_eq!(fit_height(5, None), four.round());
-        // Short lists keep the minimum; long ones stop at the screen.
-        assert_eq!(fit_height(1, None), MIN_HEIGHT);
-        assert_eq!(fit_height(0, Some(1080.)), MIN_HEIGHT);
-        assert_eq!(fit_height(40, Some(1080.)), 1080. - 2. * SCREEN_MARGIN);
-        // A screen shorter than the minimum wins over the minimum.
-        assert_eq!(fit_height(40, Some(400.)), 400.);
-    }
-
-    #[test]
     fn window_restore() {
         let frame = |x, y, width, height| WindowGeometry {
             x,

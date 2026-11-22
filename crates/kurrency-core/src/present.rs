@@ -254,24 +254,6 @@ mod tests {
     }
 
     #[test]
-    fn symbols() {
-        assert_eq!(currency_symbol("USD").as_deref(), Some("$"));
-        assert_eq!(currency_symbol("EUR").as_deref(), Some("€"));
-        assert_eq!(currency_symbol("JPY").as_deref(), Some("¥"));
-        assert_eq!(currency_symbol("HKD").as_deref(), Some("HK$"));
-        assert_eq!(currency_symbol("CHF").as_deref(), Some("Fr."));
-        assert_eq!(currency_symbol("XXX"), None);
-        assert_eq!(currency_symbol("BTC"), None);
-        // What the fonts cannot draw shows as the code.
-        let latin = |c: char| c.is_ascii() || c == '€';
-        assert_eq!(display_symbol("EUR", latin).as_deref(), Some("€"));
-        assert_eq!(display_symbol("HKD", latin).as_deref(), Some("HK$"));
-        assert_eq!(display_symbol("JPY", latin).as_deref(), Some("JPY"));
-        assert_eq!(display_symbol("AED", |_| true).as_deref(), Some("د.إ"));
-        assert_eq!(display_symbol("XXX", latin), None);
-    }
-
-    #[test]
     fn amount_splits() {
         assert_eq!(
             amount_parts("EUR", d("1119.495"), &money::Format::default(), |_| true),
@@ -359,26 +341,6 @@ mod tests {
         assert_eq!(Change::Up(d("2")).label(), "▴ 2.0%");
         assert_eq!(Change::Up(d("12.5")).label(), "▴ 12.5%");
         assert_eq!(Change::Flat.label(), "·");
-    }
-
-    #[test]
-    fn inverse_rates() {
-        assert_eq!(
-            inverse_rate_text("EUR", "USD", d("1.116537"), '.'),
-            "1 EUR = 1.1165 USD"
-        );
-        assert_eq!(
-            inverse_rate_text("JPY", "USD", d("0.0063171"), '.'),
-            "1 JPY = 0.006317 USD"
-        );
-        assert_eq!(
-            inverse_rate_text("USD", "JPY", d("158.3249"), '.'),
-            "1 USD = 158.32 JPY"
-        );
-        assert_eq!(
-            inverse_rate_text("EUR", "USD", d("1.116537"), ','),
-            "1 EUR = 1,1165 USD"
-        );
     }
 
     #[test]

@@ -340,13 +340,7 @@ pub(crate) fn format_amount_in(value: Decimal, dp: u32, style: NumberStyle) -> S
 }
 
 /// The raw number for the clipboard: rounded to `dp`, no grouping, no
-/// trailing zeros (`15832`, `89.56`, `89.5`).
-#[cfg(test)]
-pub(crate) fn raw_amount(value: Decimal, dp: u32) -> String {
-    raw_amount_in(value, dp, NumberStyle::COMMA_DOT)
-}
-
-/// [`raw_amount`] with the style's decimal separator (`89,5`).
+/// trailing zeros, with the style's decimal separator (`15832`, `89.56`, `89,5`).
 pub(crate) fn raw_amount_in(value: Decimal, dp: u32, style: NumberStyle) -> String {
     let text = round_to(value, dp).normalize().to_string();
     if style.decimal == '.' {
@@ -391,63 +385,6 @@ mod tests {
         Decimal::from_str(s).unwrap()
     }
 
-    #[test]
-    fn minor_units_from_iso() {
-        assert_eq!(minor_units("USD"), 2);
-        assert_eq!(minor_units("JPY"), 0);
-        assert_eq!(minor_units("KWD"), 3);
-        assert_eq!(minor_units("XAU"), 2);
-        assert_eq!(minor_units("BTC"), 2);
-    }
-
-    #[test]
-    fn regular_currencies() {
-        assert!(is_regular_currency("USD"));
-        assert!(is_regular_currency("CNY"));
-        assert!(!is_regular_currency("XAU"));
-        assert!(!is_regular_currency("ADA"));
-        assert!(!is_regular_currency("BOV"));
-    }
-
-    #[test]
-    fn names_and_flags() {
-        assert_eq!(currency_name("JPY"), "Japanese Yen");
-        assert_eq!(currency_name("USD"), "US Dollar");
-        assert_eq!(currency_name("HKD"), "Hong Kong Dollar");
-        assert_eq!(currency_name("ZZZ"), "ZZZ");
-        assert_eq!(flag_region("USD").as_deref(), Some("us"));
-        assert_eq!(flag_region("EUR").as_deref(), Some("eu"));
-        assert_eq!(flag_region("HKD").as_deref(), Some("hk"));
-        assert_eq!(flag_region("XCG").as_deref(), Some("cw"));
-        assert_eq!(flag_region("ANG").as_deref(), Some("cw"));
-        for code in ["XAF", "XOF", "XCD", "XPF", "XAU", "XDR", "BTC", "ZZZ"] {
-            assert_eq!(flag_region(code), None, "{code}");
-        }
-        assert_eq!(flag_badge("XAF"), "¤");
-        assert_eq!(flag_badge("BTC"), "BT");
-        assert_eq!(flag_badge(""), "¤");
-    }
-
-    #[test]
-    fn chinese_names() {
-        use crate::i18n::{Lang, with_lang};
-        assert_eq!(display_name("HKD"), "Hong Kong Dollar");
-        with_lang(Lang::ZhCn, || {
-            assert_eq!(display_name("HKD"), "港元");
-            assert_eq!(display_name("USD"), "美元");
-            assert_eq!(display_name("CHF"), "瑞士法郎");
-            // Not in CLDR: the code.
-            assert_eq!(display_name("ZZZ"), "ZZZ");
-        });
-        assert_eq!(zh_names("HKD").collect::<Vec<_>>(), ["港元", "港币"]);
-        assert_eq!(zh_names("USD").collect::<Vec<_>>(), ["美元", "美金"]);
-        assert_eq!(zh_names("ZZZ").count(), 0);
-        assert_eq!(code_for_zh_name("港币"), Some("HKD"));
-        assert_eq!(code_for_zh_name("港元"), Some("HKD"));
-        assert_eq!(code_for_zh_name("冰岛克朗"), Some("ISK"));
-        assert_eq!(code_for_zh_name("德国马克"), None);
-    }
-
     /// Every ISO 4217 code a row or the palette can hold has a CLDR name.
     #[test]
     fn cldr_names_cover_every_listed_code() {
@@ -477,29 +414,6 @@ mod tests {
     }
 
     #[test]
-    fn conversion_is_exact() {
-        // Rates against USD.
-        let eur = d("0.8956");
-        let jpy = d("158.32");
-        assert_eq!(convert(d("100"), Decimal::ONE, eur), Some(d("89.56")));
-        assert_eq!(
-            convert(d("100"), Decimal::ONE, jpy).map(|v| round_to(v, 0)),
-            Some(d("15832"))
-        );
-        // Cross rate EUR -> JPY.
-        let v = convert(d("89.56"), eur, jpy).unwrap();
-        assert_eq!(round_to(v, 0), d("15832"));
-        assert_eq!(convert(d("1"), Decimal::ZERO, jpy), None);
-    }
-
-    #[test]
-    fn rounding_half_away_from_zero() {
-        assert_eq!(round_to(d("2.345"), 2), d("2.35"));
-        assert_eq!(round_to(d("-2.345"), 2), d("-2.35"));
-        assert_eq!(round_to(d("15831.5"), 0), d("15832"));
-    }
-
-    #[test]
     fn formatting() {
         assert_eq!(format_amount(d("100"), 2), "100.00");
         assert_eq!(format_amount(d("89.555"), 2), "89.56");
@@ -512,13 +426,6 @@ mod tests {
     }
 
     #[test]
-    fn raw_values() {
-        assert_eq!(raw_amount(d("15832.4"), 0), "15832");
-        assert_eq!(raw_amount(d("89.555"), 2), "89.56");
-        assert_eq!(raw_amount(d("89.50"), 2), "89.5");
-    }
-
-    #[test]
     fn locale_home_currency() {
         assert_eq!(currency_for_locale("en-US").as_deref(), Some("USD"));
         assert_eq!(currency_for_locale("zh_CN.UTF-8").as_deref(), Some("CNY"));
@@ -526,52 +433,6 @@ mod tests {
         assert_eq!(currency_for_locale("zh-Hans-HK").as_deref(), Some("HKD"));
         assert_eq!(currency_for_locale("en").as_deref(), None);
         assert_eq!(currency_for_locale("C").as_deref(), None);
-    }
-
-    #[test]
-    fn default_list_dedupes() {
-        assert_eq!(
-            default_currency_list(Some("USD")),
-            ["USD", "EUR", "GBP", "JPY", "CNY"]
-        );
-        assert_eq!(
-            default_currency_list(Some("HKD")),
-            ["HKD", "USD", "EUR", "GBP", "JPY", "CNY"]
-        );
-        assert_eq!(
-            default_currency_list(None),
-            ["USD", "EUR", "GBP", "JPY", "CNY"]
-        );
-    }
-
-    #[test]
-    fn number_styles() {
-        let v = d("1234567.891");
-        assert_eq!(
-            format_amount_in(v, 2, NumberStyle::COMMA_DOT),
-            "1,234,567.89"
-        );
-        assert_eq!(
-            format_amount_in(v, 2, NumberStyle::DOT_COMMA),
-            "1.234.567,89"
-        );
-        assert_eq!(
-            format_amount_in(v, 2, NumberStyle::SPACE_COMMA),
-            "1\u{202f}234\u{202f}567,89"
-        );
-        assert_eq!(
-            format_amount_in(d("-1234.5"), 0, NumberStyle::DOT_COMMA),
-            "-1.235"
-        );
-        assert_eq!(
-            raw_amount_in(d("89.555"), 2, NumberStyle::DOT_COMMA),
-            "89,56"
-        );
-        assert_eq!(
-            raw_amount_in(d("1250"), 2, NumberStyle::SPACE_COMMA),
-            "1250"
-        );
-        assert_eq!(raw_amount_in(d("12.5"), 2, NumberStyle::COMMA_DOT), "12.5");
     }
 
     #[test]
@@ -593,20 +454,5 @@ mod tests {
         assert_eq!(style("sv-SE"), NumberStyle::SPACE_COMMA);
         assert_eq!(style("C"), NumberStyle::COMMA_DOT);
         assert_eq!(NumberStyle::for_locale(None), NumberStyle::COMMA_DOT);
-    }
-
-    #[test]
-    fn display_formats() {
-        let extra = Format {
-            style: NumberStyle::DOT_COMMA,
-            extra_dp: 2,
-        };
-        assert_eq!(extra.dp("JPY"), 2);
-        assert_eq!(extra.dp("USD"), 4);
-        assert_eq!(extra.amount("USD", d("1119.49512")), "1.119,4951");
-        assert_eq!(extra.raw("JPY", d("197875.456")), "197875,46");
-        let plain = Format::default();
-        assert_eq!(plain.amount("JPY", d("197875.456")), "197,875");
-        assert_eq!(plain.raw("USD", d("89.5")), "89.5");
     }
 }

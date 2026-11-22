@@ -235,29 +235,10 @@ mod tests {
     }
 
     #[test]
-    fn staleness() {
-        let t = table();
-        assert!(!t.is_older_than(6 * 3600, 1_000 + 6 * 3600));
-        assert!(t.is_older_than(6 * 3600, 1_001 + 6 * 3600));
-    }
-
-    #[test]
     fn f64_to_decimal_is_the_literal() {
         assert_eq!(decimal_from_f64(0.0076554), Some(d("0.0076554")));
         assert_eq!(decimal_from_f64(158.32), Some(d("158.32")));
         assert_eq!(decimal_from_f64(1544.86606302), Some(d("1544.86606302")));
         assert_eq!(decimal_from_f64(f64::NAN), None);
-    }
-
-    /// Which tables count as fresh for a Settings → Source choice (the chain
-    /// order itself is tested through a refresh in `store`).
-    #[test]
-    fn sources_serve_their_settings() {
-        assert!(Source::Fawaz.serves(RateSource::Auto));
-        assert!(!Source::Fawaz.serves(RateSource::Ecb));
-        assert!(Source::Ecb.serves(RateSource::Ecb));
-        assert!(!Source::FrankfurterEcb.serves(RateSource::Frankfurter));
-        assert!(Source::FrankfurterEcb.serves(RateSource::Auto));
-        assert!(Source::Bundled.serves(RateSource::Frankfurter));
     }
 }

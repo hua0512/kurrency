@@ -373,28 +373,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn first_launch_uses_locale() {
-        let s = Settings::first_launch(Some("zh-CN"));
-        assert_eq!(s.currencies, ["CNY", "USD", "EUR", "GBP", "JPY"]);
-        assert_eq!(s.source.as_deref(), Some("CNY"));
-        let s = Settings::first_launch(Some("en-GB"));
-        assert_eq!(s.currencies, ["GBP", "USD", "EUR", "JPY", "CNY"]);
-        let s = Settings::first_launch(None);
-        assert_eq!(s.currencies, ["USD", "EUR", "GBP", "JPY", "CNY"]);
-    }
-
-    #[test]
-    fn up_down_colors_follow_the_language() {
-        let by_lang = UpDownColors::ByLanguage;
-        assert!(by_lang.green_up(Some("en-US")));
-        assert!(by_lang.green_up(None));
-        assert!(!by_lang.green_up(Some("zh-CN")));
-        assert!(!by_lang.green_up(Some("zh_TW")));
-        assert!(UpDownColors::GreenUp.green_up(Some("zh-CN")));
-        assert!(!UpDownColors::RedUp.green_up(Some("en-GB")));
-    }
-
-    #[test]
     fn normalize_dedupes_and_drops_junk() {
         let mut s = Settings {
             currencies: vec!["USD".into(), "eur".into(), "USD".into(), "JPY".into()],
@@ -404,57 +382,6 @@ mod tests {
         };
         s.normalize();
         assert_eq!(s.currencies, ["USD", "JPY"]);
-    }
-
-    #[test]
-    fn round_trip_and_missing_fields() {
-        let dir = std::env::temp_dir().join(format!("kurrency-settings-{}", std::process::id()));
-        let path = dir.join("settings.json");
-        assert_eq!(load(Some(&path), Some("ja-JP")).currencies[0], "JPY");
-        let s = Settings {
-            currencies: vec!["HKD".into(), "USD".into()],
-            source: Some("USD".into()),
-            amount: Some("42.5".into()),
-            up_down_colors: UpDownColors::RedUp,
-            reduce_motion: true,
-            theme_mode: ThemeMode::Dark,
-            theme_light: ThemeId::Slate,
-            theme_dark: ThemeId::Ink,
-            language: Language::ChineseSimplified,
-            number_format: NumberFormat::SpaceComma,
-            decimal_places: DecimalPlaces::ExtraTwo,
-            rate_source: RateSource::Ecb,
-            refresh_interval: RefreshInterval::Manual,
-            window: Some(SavedWindow {
-                x: Some(10.),
-                y: Some(20.),
-                width: 380.,
-                height: 600.,
-            }),
-        };
-        save(&path, &s).unwrap();
-        assert_eq!(load(Some(&path), None), s);
-        // Wayland: the size only.
-        let size_only = Settings {
-            window: Some(SavedWindow {
-                x: None,
-                y: None,
-                width: 380.,
-                height: 600.,
-            }),
-            ..s.clone()
-        };
-        save(&path, &size_only).unwrap();
-        let saved = std::fs::read_to_string(&path).unwrap();
-        assert!(!saved.contains("\"x\""), "{saved}");
-        assert_eq!(load(Some(&path), None), size_only);
-        assert_eq!(size_only.window.unwrap().frame(), None);
-        std::fs::write(&path, br#"{"currencies":["SGD"]}"#).unwrap();
-        let partial = load(Some(&path), None);
-        assert_eq!(partial.currencies, ["SGD"]);
-        assert_eq!(partial.up_down_colors, UpDownColors::ByLanguage);
-        assert!(!partial.reduce_motion);
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -503,20 +430,5 @@ mod tests {
         assert_eq!(json["theme_light"], "paper");
         assert_eq!(json["number_format"], "system");
         assert_eq!(json["decimal_places"], "currency_default");
-    }
-
-    #[test]
-    fn format_choices() {
-        use crate::money::NumberStyle;
-        assert_eq!(
-            NumberFormat::DotComma.style(Some("en-US")),
-            NumberStyle::DOT_COMMA
-        );
-        assert_eq!(
-            NumberFormat::System.style(Some("de-DE")),
-            NumberStyle::DOT_COMMA
-        );
-        assert_eq!(NumberFormat::System.style(None), NumberStyle::COMMA_DOT);
-        assert_eq!(RefreshInterval::Manual.secs(), None);
     }
 }

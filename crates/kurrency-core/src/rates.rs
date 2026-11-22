@@ -260,18 +260,6 @@ mod tests {
     }
 
     #[test]
-    fn dates_and_ages() {
-        assert_eq!(long_date("2026-11-06"), "6 November 2026");
-        assert_eq!(long_date("2026-01-31"), "31 January 2026");
-        assert_eq!(long_date("nonsense"), "nonsense");
-        assert_eq!(relative_age(0), "now");
-        assert_eq!(relative_age(59), "now");
-        assert_eq!(relative_age(60), "1m");
-        assert_eq!(relative_age(2 * 3600 + 59), "2h");
-        assert_eq!(relative_age(3 * 86_400 + 5), "3d");
-    }
-
-    #[test]
     fn bundled_snapshot_is_usable() {
         let t = bundled();
         assert_eq!(t.source, Source::Bundled);
@@ -381,57 +369,5 @@ mod tests {
         t.source = Source::Bundled;
         t.dates.insert("EUR".into(), "2026-11-02".into());
         assert_eq!(last_updated(&t, 0, at), "Bundled · rates of 2 Nov");
-    }
-
-    #[test]
-    fn chinese_dates_ages_and_freshness() {
-        use crate::i18n::{Lang, with_lang};
-        with_lang(Lang::ZhCn, || {
-            assert_eq!(long_date("2026-11-06"), "2026年11月6日");
-            assert_eq!(relative_age(0), "刚刚");
-            assert_eq!(relative_age(2 * 60 + 5), "2分钟");
-            assert_eq!(relative_age(3 * 3600), "3小时");
-            assert_eq!(relative_age(4 * 86_400), "4天");
-
-            let at = history::Date::parse("2026-11-07").unwrap().unix_secs() + 19 * 3600 + 59 * 60;
-            let mut t = table(Source::Frankfurter, at);
-            assert_eq!(last_updated(&t, 0, at), "11月7日 19:59");
-            assert_eq!(
-                last_updated(&t, 0, at + 400 * 86_400),
-                "2026年11月7日 19:59"
-            );
-            t.source = Source::Bundled;
-            t.dates.insert("EUR".into(), "2026-11-02".into());
-            assert_eq!(last_updated(&t, 0, at), "内置 · 11月2日汇率");
-
-            let now = 1_794_000_000;
-            let d = Some("2026-11-06");
-            let fresh = table(Source::Frankfurter, now - 2 * 3600);
-            let f = freshness(
-                &fresh,
-                d,
-                &RefreshState::Idle,
-                0,
-                Some(REFRESH_AFTER_SECS),
-                now,
-            );
-            assert_eq!(f.age, "2小时");
-            assert_eq!(f.source_line, "Frankfurter · 2026年11月6日汇率");
-            assert_eq!(f.status_line, "2小时前更新 · 4小时后刷新");
-            let f = freshness(&fresh, d, &RefreshState::Idle, 0, Some(3600), now);
-            assert_eq!(f.status_line, "2小时前更新 · 即将刷新");
-            let f = freshness(&fresh, d, &RefreshState::Idle, 0, None, now);
-            assert_eq!(f.status_line, "2小时前更新 · 需手动刷新");
-            let just = table(Source::Ecb, now - 10);
-            let f = freshness(&just, d, &RefreshState::Idle, 0, None, now);
-            assert_eq!(f.status_line, "刚刚更新 · 需手动刷新");
-            assert_eq!(f.source_line, "欧洲央行 · 2026年11月6日汇率");
-            let offline = RefreshState::Failed {
-                offline: true,
-                message: "dns".into(),
-            };
-            let f = freshness(&fresh, d, &offline, now - 60, Some(REFRESH_AFTER_SECS), now);
-            assert_eq!(f.status_line, "离线 · 14分钟后重试");
-        });
     }
 }

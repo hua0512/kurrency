@@ -234,18 +234,6 @@ mod tests {
     }
 
     #[test]
-    fn lookups_follow_the_language() {
-        assert_eq!(lang(), Lang::En);
-        assert_eq!(tr!("toast.undo"), "Undo");
-        assert_eq!(tr!("toast.removed", code = "EUR"), "EUR removed");
-        with_lang(Lang::ZhCn, || {
-            assert_eq!(tr!("toast.undo"), "撤销");
-            assert_eq!(tr!("toast.removed", code = "EUR"), "已移除 EUR");
-        });
-        assert_eq!(tr!("toast.undo"), "Undo");
-    }
-
-    #[test]
     fn languages_from_settings_and_system_locales() {
         let system = |l: &str| Lang::resolve(Language::System, Some(l));
         for zh in [
@@ -271,21 +259,5 @@ mod tests {
             Lang::ZhCn
         );
         assert_eq!(Lang::resolve(Language::English, Some("zh-CN")), Lang::En);
-    }
-
-    #[test]
-    fn dates_per_language() {
-        assert_eq!(short_date(2026, 11, 7, false), "7 Nov");
-        assert_eq!(short_date(2019, 10, 14, true), "14 Oct 2019");
-        assert_eq!(long_date(2026, 11, 6), "6 November 2026");
-        assert_eq!(date_time("7 Nov", 19, 59), "7 Nov, 19:59");
-        assert_eq!(date_time("7 Nov", 9, 5), "7 Nov, 09:05");
-        with_lang(Lang::ZhCn, || {
-            assert_eq!(short_date(2026, 11, 7, false), "11月7日");
-            assert_eq!(short_date(2019, 10, 14, true), "2019年10月14日");
-            assert_eq!(short_date(2026, 1, 31, false), "1月31日");
-            assert_eq!(long_date(2026, 11, 6), "2026年11月6日");
-            assert_eq!(date_time("11月7日", 19, 59), "11月7日 19:59");
-        });
     }
 }

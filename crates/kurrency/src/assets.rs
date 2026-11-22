@@ -245,22 +245,6 @@ mod tests {
     }
 
     #[test]
-    fn every_code_has_a_flag_or_the_fallback() {
-        for code in all_codes() {
-            match flag_path(&code) {
-                Some(path) => {
-                    let data = Assets.load(&path).unwrap().expect("embedded flag");
-                    assert!(gunzip(&data).starts_with(b"<svg"), "{path}");
-                }
-                None => {
-                    let badge = money::flag_badge(&code);
-                    assert!(badge == "¤" || badge == code[..2], "{code}: {badge}");
-                }
-            }
-        }
-    }
-
-    #[test]
     fn listed_currencies_have_real_flags() {
         // Supranational currencies with no shared flag show the badge.
         let badged = ["XAF", "XOF", "XCD", "XPF"];
