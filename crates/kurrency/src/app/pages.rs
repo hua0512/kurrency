@@ -38,6 +38,7 @@ impl KurrencyApp {
                 view: PageView::Settings(view),
                 from_row: None,
                 _subscription: subscription,
+                _observe: None,
             },
             cx,
         );
@@ -86,24 +87,38 @@ impl KurrencyApp {
         cx: &mut Context<Self>,
     ) {
         let code = quote.clone();
+        let anchor_code = self.anchor().unwrap_or(&base).to_string();
+        let anchor_amount = self.amount;
+        let fmt = self.fmt;
         let provider = HistoryProvider::new(cx.http_client(), self.history_dir.clone());
         let green_up = self.green_up();
-        let decimal = self.fmt.style.decimal;
         let rates = self.rates.clone();
         let view = cx.new(|cx| {
-            ui::detail::DetailView::new(base, quote, rates, Some(provider), green_up, decimal, cx)
+            ui::detail::DetailView::new(
+                base,
+                quote,
+                anchor_code,
+                anchor_amount,
+                fmt,
+                rates,
+                Some(provider),
+                green_up,
+                cx,
+            )
         });
         let subscription = cx.subscribe_in(
             &view,
             window,
             |this, _, _: &ui::detail::CloseDetail, window, cx| this.close_page(window, cx),
         );
+        let observe = cx.observe(&view, |_, _, cx| cx.notify());
         view.read(cx).focus_handle(cx).focus(window, cx);
         self.show_page(
             Page {
                 view: PageView::Detail(view),
                 from_row: Some(code),
                 _subscription: subscription,
+                _observe: Some(observe),
             },
             cx,
         );

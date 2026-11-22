@@ -51,13 +51,17 @@ source:
 
 anchor:
   swap: "Swap with the first row"
+  change_currency: "Change source currency"
 
-# The quick-amount chips: 10, 100, 1,000 and 10,000.
+# The quick-amount chips, scaled to the anchor currency's magnitude.
 quick:
   ten: "10"
   hundred: "100"
   thousand: "1k"
   ten_thousand: "10k"
+  hundred_thousand: "100k"
+  million: "1M"
+  ten_million: "10M"
 
 row:
   change_tooltip: "Daily change · click for history"
@@ -75,17 +79,21 @@ add_row:
   hint: "type to search"
 
 palette:
-  placeholder: "Search, or 50 gbp · +chf · -jpy · eur>usd"
+  placeholder: "Search currency, or 50 gbp · eur>usd"
+  select_anchor_placeholder: "Choose source currency…"
   currencies: "Currencies"
   footer: "↑↓ navigate · ↵ run · Esc close"
   set_amount: "Set %{code} to %{amount}"
   add: "Add %{code} · %{name}"
   remove: "Remove %{code} · %{name}"
   history: "%{base} → %{quote} history"
+  switch_hint: "Switch"
 
 toast:
   removed: "%{code} removed"
   undo: "Undo"
+  clipboard_convert: "Convert %{price} from clipboard?"
+  apply: "Convert"
 
 detail:
   back: "Back (Esc)"
@@ -97,6 +105,10 @@ detail:
   high: "High"
   low: "Low"
   average: "Average"
+  your_amount_now: "%{from} = %{to}"
+  your_amount: "%{from} was %{to}"
+  your_amount_delta: "%{from} was %{to} (%{delta})"
+  range_position: "%{pct}% of %{range} range"
   footer: "%{source} · daily reference rates%{note}"
   note_offline: " · offline, cached"
   note_failed: " · update failed, cached"

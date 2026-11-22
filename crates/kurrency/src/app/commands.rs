@@ -1,12 +1,17 @@
 //! The palette's commands (`50 gbp`, `+chf`, `-jpy`, `eur>usd`) and smart
 //! paste of a price from the clipboard.
 
+use gpui_kit::component::WindowExt as _;
 use gpui_kit::{App, Context, Window};
 use kurrency_core::command::{self, Command};
+use kurrency_core::i18n::tr;
 use kurrency_core::paste;
+use kurrency_core::present;
 use rust_decimal::Decimal;
 
 use super::{KurrencyApp, Row};
+use crate::assets;
+use crate::ui;
 
 impl KurrencyApp {
     /// Runs a palette command (`50 gbp`, `+chf`, `-jpy`, `eur>usd`).
@@ -143,5 +148,57 @@ impl KurrencyApp {
         if all_selected && self.smart_paste(true, window, cx) {
             cx.stop_propagation();
         }
+    }
+
+    /// Checks the clipboard when returning to the window and offers a one-click
+    /// convert toast if it holds a new currency-tagged price (DESIGN §2).
+    pub(crate) fn check_clipboard_hint(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page.is_some()
+            || self.is_editing()
+            || self.toast.is_some()
+            || window.has_active_dialog(cx)
+        {
+            return;
+        }
+        let Some(raw) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            return;
+        };
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed.len() > 64 {
+            return;
+        }
+        if self.last_clipboard_hint.as_deref() == Some(trimmed) {
+            return;
+        }
+        let list: Vec<String> = self.rows.iter().map(|row| row.code.clone()).collect();
+        let Some(price) = paste::parse_price(trimmed, &list) else {
+            return;
+        };
+        let Some(code) = price.code else {
+            return;
+        };
+        if !self.known(&code, cx) {
+            return;
+        }
+        if self.anchor() == Some(code.as_str()) && self.amount == Some(price.amount) {
+            self.last_clipboard_hint = Some(trimmed.to_string());
+            return;
+        }
+        self.last_clipboard_hint = Some(trimmed.to_string());
+        let parts = present::amount_parts(&code, price.amount, &self.fmt, assets::has_glyph);
+        let pretty = match parts.symbol {
+            Some(sym) => format!("{sym}{}{}", parts.integer, parts.fraction),
+            None => format!("{code} {}{}", parts.integer, parts.fraction),
+        };
+        self.show_toast(
+            tr!("toast.clipboard_convert", price = pretty),
+            ui::toast::ToastAction::ConvertClipboard {
+                code,
+                amount: price.amount,
+            },
+            ui::toast::CLIPBOARD_SHOW_FOR,
+            cx,
+        );
+        cx.notify();
     }
 }

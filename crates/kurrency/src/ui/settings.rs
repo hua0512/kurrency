@@ -110,26 +110,6 @@ impl Render for SettingsView {
             .unwrap_or_default();
         let app = self.app.clone();
 
-        let header = h_flex()
-            .h(px(48.))
-            .px_2()
-            .gap_1()
-            .border_b_1()
-            .border_color(t.hairline)
-            .child(
-                Button::new("settings-back")
-                    .ghost()
-                    .icon(IconName::ChevronLeft)
-                    .tooltip(tr!("settings.back"))
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseSettings))),
-            )
-            .child(
-                div()
-                    .text_size(px(17.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(tr!("settings.title")),
-            );
-
         let appearance = section(
             tr!("settings.appearance"),
             vec![
@@ -338,7 +318,8 @@ impl Render for SettingsView {
             .text_color(t.text)
             // Clicks must not fall through to the list underneath.
             .occlude()
-            .child(header)
+            .border_t_1()
+            .border_color(t.hairline)
             .child(
                 div()
                     .id("settings-scroll")

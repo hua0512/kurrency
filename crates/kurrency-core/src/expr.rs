@@ -1,9 +1,10 @@
 //! A small arithmetic expression evaluator for amount fields.
 //!
-//! Supports `+ - * /` (also `×` and `÷`), parentheses, unary signs, decimal
-//! numbers with optional thousands separators (in the chosen number style), and the `k` (×1 000)
-//! and `m` (×1 000 000) suffixes on numbers and parenthesised groups. All
-//! arithmetic is exact [`Decimal`] arithmetic with overflow checks.
+//! Supports `+ - * /` (also `×` and `÷`), percentages (`100+8.5%`, `200-15%`,
+//! `50%`), parentheses, unary signs, decimal numbers with optional thousands
+//! separators (in the chosen number style), and the `k` (×1 000) and `m`
+//! (×1 000 000) suffixes on numbers and parenthesised groups. All arithmetic
+//! is exact [`Decimal`] arithmetic with overflow checks.
 //!
 //! This module has no GPUI dependency.
 
@@ -60,6 +61,8 @@ enum Token {
     RParen,
     /// A magnitude suffix: `k` or `m`.
     Suffix(Decimal),
+    /// Percentage suffix (`%`).
+    Percent,
 }
 
 /// Stands for a `.` in `1.234,56` style until the literal is read whole.
@@ -165,6 +168,10 @@ fn tokenize(input: &str, style: NumberStyle) -> Result<Vec<(usize, Token)>, Expr
                 chars.next();
                 tokens.push((at, Token::Suffix(Decimal::from(1_000_000))));
             }
+            '%' | '％' => {
+                chars.next();
+                tokens.push((at, Token::Percent));
+            }
             _ => return Err(ExprError::UnexpectedChar(at)),
         }
     }
@@ -188,19 +195,32 @@ impl Parser {
     }
 
     /// expr := term (('+' | '-') term)*
+    ///
+    /// A bare percentage on the right-hand side of `+` or `-` (`100 + 8.5%`,
+    /// `200 - 15%`) applies to the running left-hand value.
     fn expr(&mut self) -> Result<Decimal, ExprError> {
-        let mut value = self.term()?;
+        let (mut value, _) = self.term()?;
         loop {
             match self.peek() {
                 Some(Token::Plus) => {
                     self.next();
-                    let rhs = self.term()?;
-                    value = value.checked_add(rhs).ok_or(ExprError::Overflow)?;
+                    let (rhs, is_pct) = self.term()?;
+                    let delta = if is_pct {
+                        value.checked_mul(rhs).ok_or(ExprError::Overflow)?
+                    } else {
+                        rhs
+                    };
+                    value = value.checked_add(delta).ok_or(ExprError::Overflow)?;
                 }
                 Some(Token::Minus) => {
                     self.next();
-                    let rhs = self.term()?;
-                    value = value.checked_sub(rhs).ok_or(ExprError::Overflow)?;
+                    let (rhs, is_pct) = self.term()?;
+                    let delta = if is_pct {
+                        value.checked_mul(rhs).ok_or(ExprError::Overflow)?
+                    } else {
+                        rhs
+                    };
+                    value = value.checked_sub(delta).ok_or(ExprError::Overflow)?;
                 }
                 _ => return Ok(value),
             }
@@ -208,34 +228,37 @@ impl Parser {
     }
 
     /// term := unary (('*' | '/') unary)*
-    fn term(&mut self) -> Result<Decimal, ExprError> {
-        let mut value = self.unary()?;
+    fn term(&mut self) -> Result<(Decimal, bool), ExprError> {
+        let (mut value, mut is_pct) = self.unary()?;
         loop {
             match self.peek() {
                 Some(Token::Star) => {
                     self.next();
-                    let rhs = self.unary()?;
+                    let (rhs, _) = self.unary()?;
                     value = value.checked_mul(rhs).ok_or(ExprError::Overflow)?;
+                    is_pct = false;
                 }
                 Some(Token::Slash) => {
                     self.next();
-                    let rhs = self.unary()?;
+                    let (rhs, _) = self.unary()?;
                     if rhs.is_zero() {
                         return Err(ExprError::DivisionByZero);
                     }
                     value = value.checked_div(rhs).ok_or(ExprError::Overflow)?;
+                    is_pct = false;
                 }
-                _ => return Ok(value),
+                _ => return Ok((value, is_pct)),
             }
         }
     }
 
     /// unary := ('+' | '-') unary | primary
-    fn unary(&mut self) -> Result<Decimal, ExprError> {
+    fn unary(&mut self) -> Result<(Decimal, bool), ExprError> {
         match self.peek() {
             Some(Token::Minus) => {
                 self.next();
-                Ok(-self.unary()?)
+                let (v, pct) = self.unary()?;
+                Ok((-v, pct))
             }
             Some(Token::Plus) => {
                 self.next();
@@ -245,8 +268,8 @@ impl Parser {
         }
     }
 
-    /// primary := (number | '(' expr ')') suffix*
-    fn primary(&mut self) -> Result<Decimal, ExprError> {
+    /// primary := (number | '(' expr ')') (suffix | '%')*
+    fn primary(&mut self) -> Result<(Decimal, bool), ExprError> {
         let mut value = match self.next() {
             Some(Token::Num(n)) => n,
             Some(Token::LParen) => {
@@ -260,12 +283,26 @@ impl Parser {
             None => return Err(ExprError::UnexpectedEnd),
             Some(_) => return Err(ExprError::UnexpectedChar(self.offset(self.pos - 1))),
         };
-        while let Some(Token::Suffix(mul)) = self.peek() {
-            let mul = *mul;
-            self.next();
-            value = value.checked_mul(mul).ok_or(ExprError::Overflow)?;
+        let mut is_pct = false;
+        loop {
+            match self.peek() {
+                Some(Token::Suffix(mul)) => {
+                    let mul = *mul;
+                    self.next();
+                    value = value.checked_mul(mul).ok_or(ExprError::Overflow)?;
+                    is_pct = false;
+                }
+                Some(Token::Percent) => {
+                    self.next();
+                    value = value
+                        .checked_div(Decimal::ONE_HUNDRED)
+                        .ok_or(ExprError::Overflow)?;
+                    is_pct = true;
+                }
+                _ => break,
+            }
         }
-        Ok(value)
+        Ok((value, is_pct))
     }
 
     fn offset(&self, pos: usize) -> usize {

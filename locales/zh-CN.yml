@@ -49,12 +49,16 @@ source:
 
 anchor:
   swap: "与第一行互换"
+  change_currency: "切换主货币"
 
 quick:
   ten: "10"
   hundred: "100"
   thousand: "1千"
   ten_thousand: "1万"
+  hundred_thousand: "10万"
+  million: "100万"
+  ten_million: "1000万"
 
 row:
   change_tooltip: "日涨跌 · 点击查看走势"
@@ -72,17 +76,21 @@ add_row:
   hint: "直接输入即可搜索"
 
 palette:
-  placeholder: "搜索，或输入 50 gbp · +chf · -jpy · eur>usd"
+  placeholder: "搜索货币，或输入 50 gbp · eur>usd"
+  select_anchor_placeholder: "选择主货币…"
   currencies: "货币"
   footer: "↑↓ 选择 · ↵ 执行 · Esc 关闭"
   set_amount: "将 %{code} 设为 %{amount}"
   add: "添加 %{code} · %{name}"
   remove: "移除 %{code} · %{name}"
   history: "查看 %{base} → %{quote} 走势"
+  switch_hint: "切换"
 
 toast:
   removed: "已移除 %{code}"
   undo: "撤销"
+  clipboard_convert: "转换剪贴板中的 %{price}？"
+  apply: "转换"
 
 detail:
   back: "返回（Esc）"
@@ -94,6 +102,10 @@ detail:
   high: "最高"
   low: "最低"
   average: "平均"
+  your_amount_now: "%{from} = %{to}"
+  your_amount: "%{from} 当时约合 %{to}"
+  your_amount_delta: "%{from} 当时约合 %{to}（%{delta}）"
+  range_position: "位于%{range}区间的 %{pct}%"
   footer: "%{source} · 每日参考汇率%{note}"
   note_offline: " · 离线，显示缓存数据"
   note_failed: " · 更新失败，显示缓存数据"

@@ -208,9 +208,40 @@ pub fn step_amount(
     Some(next.max(Decimal::ZERO).normalize())
 }
 
-/// The quick-amount chips under the anchor card.
+/// The default quick-amount chips under the anchor card.
 pub const QUICK_AMOUNTS: [(&str, i64); 4] =
     [("10", 10), ("100", 100), ("1k", 1_000), ("10k", 10_000)];
+
+/// Quick-amount chips scaled for currencies around 100–5,000 per USD (JPY, KRW, HUF, ...).
+const QUICK_AMOUNTS_MEDIUM: [(&str, i64); 4] = [
+    ("1k", 1_000),
+    ("10k", 10_000),
+    ("100k", 100_000),
+    ("1m", 1_000_000),
+];
+
+/// Quick-amount chips scaled for currencies at 5,000+ per USD (VND, IDR, ...).
+const QUICK_AMOUNTS_LARGE: [(&str, i64); 4] = [
+    ("10k", 10_000),
+    ("100k", 100_000),
+    ("1m", 1_000_000),
+    ("10m", 10_000_000),
+];
+
+/// Currency-aware quick amounts chosen by how many units of the anchor currency
+/// equal 1 USD. Falls back to [`QUICK_AMOUNTS`] when unknown or under 100.
+pub fn quick_amounts(rate_per_usd: Option<Decimal>) -> [(&'static str, i64); 4] {
+    let Some(rate) = rate_per_usd else {
+        return QUICK_AMOUNTS;
+    };
+    if rate >= Decimal::from(5_000) {
+        QUICK_AMOUNTS_LARGE
+    } else if rate >= Decimal::from(100) {
+        QUICK_AMOUNTS_MEDIUM
+    } else {
+        QUICK_AMOUNTS
+    }
+}
 
 #[cfg(test)]
 mod tests {

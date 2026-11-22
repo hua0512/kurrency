@@ -1,14 +1,16 @@
 //! The palette (Ctrl+K, DESIGN §2): a search field over the currencies
-//! that also reads natural commands. `50 gbp` sets GBP to 50, `+chf` adds,
-//! `-jpy` removes, `eur>usd` opens that history; the command is the top
-//! entry, run with ↵, above the "Currencies" matches (code, English or
-//! Chinese name). ✓ marks listed currencies and confirming one toggles it.
+//! that also reads natural commands. `50 gbp` sets GBP to 50 (showing a live
+//! conversion preview right inside the command row), `+chf` adds, `-jpy`
+//! removes, `eur>usd` opens that history. Confirming a currency already in
+//! the list switches it into the anchor instead of deleting it; an empty
+//! search surfaces listed and popular currencies first.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use gpui_kit::component::command::{Command, CommandGroup, CommandItem, CommandState};
 use gpui_kit::component::{ActiveTheme as _, Icon, WindowExt as _, h_flex};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, Context, Entity, Focusable as _, FontWeight, InteractiveElement as _,
     IntoElement, ParentElement as _, StatefulInteractiveElement as _, Styled as _, Window, div, px,
@@ -16,14 +18,28 @@ use gpui_kit::{
 use kurrency_core::command;
 use kurrency_core::i18n::tr;
 use kurrency_core::money;
+use kurrency_core::present;
 
 use crate::app::{KurrencyApp, OpenPicker};
+use crate::assets;
 use crate::layout::metrics;
+use crate::ui::anchor::tabular_numerals;
 use crate::ui::flag::flag;
 use crate::ui::theme::Tokens;
 
 // Lucide "arrow-right-left" (ISC).
 const COMMAND_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>"#;
+
+/// What confirming a currency item does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PickerMode {
+    /// Ctrl+K / + Add / type-anywhere: commands work; listed currencies switch
+    /// to anchor, unlisted currencies are added.
+    Default,
+    /// Clicked the anchor currency badge: picking any currency makes it the
+    /// anchor (adding it if needed) while keeping the current value.
+    SelectAnchor,
+}
 
 pub(crate) struct Picker {
     state: Entity<CommandState>,
@@ -65,10 +81,20 @@ pub(crate) fn open(
     window: &mut Window,
     cx: &mut Context<KurrencyApp>,
 ) {
+    open_mode(app, query, PickerMode::Default, window, cx);
+}
+
+/// Opens the palette in the given [`PickerMode`].
+pub(crate) fn open_mode(
+    app: &mut KurrencyApp,
+    query: &str,
+    mode: PickerMode,
+    window: &mut Window,
+    cx: &mut Context<KurrencyApp>,
+) {
     if window.has_active_dialog(cx) {
         return;
     }
-    // Only real, current ISO currencies that have a rate.
     app.picker.codes = app
         .rates
         .read(cx)
@@ -107,14 +133,21 @@ pub(crate) fn open(
                         let list: Vec<String> =
                             app.rows.iter().map(|row| row.code.clone()).collect();
                         let parsed = command::parse(&query, &list);
-                        let command = app.palette_command(&query, cx);
-                        let codes = command::search(&parsed.search, &app.picker.codes);
+                        let command = (mode == PickerMode::Default)
+                            .then(|| app.palette_command(&query, cx))
+                            .flatten();
+                        let codes = if parsed.search.is_empty() {
+                            command::order_for_palette(&app.picker.codes, &list)
+                        } else {
+                            command::search(&parsed.search, &app.picker.codes)
+                        };
                         let item = command.as_ref().map(|command| {
                             let label = command::label_in(command, app.fmt.style);
+                            let preview = command_preview(app, command, cx);
                             CommandItem::new().label(label.clone()).child(move |_, _| {
                                 h_flex()
                                     .flex_1()
-                                    .gap_3()
+                                    .gap_2()
                                     .child(
                                         Icon::default()
                                             .data(COMMAND_SVG)
@@ -124,15 +157,30 @@ pub(crate) fn open(
                                     .child(
                                         div()
                                             .flex_1()
+                                            .min_w(px(0.))
+                                            .truncate()
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .child(label.clone()),
                                     )
-                                    .child(div().text_color(t.muted).child("↵"))
+                                    .when_some(preview.clone(), |el, preview| {
+                                        el.child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .text_size(px(12.))
+                                                .text_color(t.muted)
+                                                .font_features(tabular_numerals())
+                                                .child(preview),
+                                        )
+                                    })
+                                    .child(div().flex_shrink_0().text_color(t.muted).child("↵"))
                             })
                         });
-                        let group = CommandGroup::new()
-                            .label(tr!("palette.currencies"))
-                            .items(codes.iter().map(|code| currency_item(code, &list)));
+                        let anchor = app.anchor().map(str::to_string);
+                        let group = CommandGroup::new().label(tr!("palette.currencies")).items(
+                            codes
+                                .iter()
+                                .map(|code| currency_item(code, &list, anchor.as_deref())),
+                        );
                         *shown.borrow_mut() = Shown { command, codes };
                         (item, group)
                     })
@@ -140,21 +188,23 @@ pub(crate) fn open(
 
                 let confirm_owner = owner.clone();
                 let confirm_shown = shown.clone();
+                let placeholder = match mode {
+                    PickerMode::Default => tr!("palette.placeholder"),
+                    PickerMode::SelectAnchor => tr!("palette.select_anchor_placeholder"),
+                };
                 let mut palette = Command::new(&state)
                     .bordered(false)
                     .filterable(false)
                     .rounded(cx.theme().radius_lg)
-                    .placeholder(tr!("palette.placeholder"))
+                    .placeholder(placeholder)
                     .max_h(px(320.));
                 let has_command = command_item.is_some();
                 if let Some(item) = command_item {
                     palette = palette.item(item);
                 }
-                // The dialog is drawn outside the app's root view.
-                crate::assets::with_cjk_fallback(content).child(
+                assets::with_cjk_fallback(content).child(
                     palette
                         .group(group)
-                        // The items depend on the query: draw them again.
                         .on_query(|_, window, _| window.refresh())
                         .on_confirm(move |index, window, cx| {
                             let shown = confirm_shown.borrow();
@@ -167,18 +217,25 @@ pub(crate) fn open(
                             drop(shown);
                             window.close_dialog(cx);
                             let owner = confirm_owner.clone();
-                            // After the dialog has given focus back, so a
-                            // history page keeps it.
                             window.defer(cx, move |window, cx| {
                                 let _ = owner.update(cx, |app, cx| match (command, code) {
                                     (Some(command), _) => app.run_command(command, window, cx),
-                                    (None, Some(code)) => {
-                                        if app.rows.iter().any(|row| row.code == code) {
-                                            app.remove_currency(&code, window, cx);
-                                        } else {
-                                            app.add_currency(&code, window, cx);
+                                    (None, Some(code)) => match mode {
+                                        PickerMode::SelectAnchor => {
+                                            app.select_anchor(&code, window, cx);
                                         }
-                                    }
+                                        PickerMode::Default => {
+                                            if let Some(ix) =
+                                                app.rows.iter().position(|row| row.code == code)
+                                            {
+                                                if ix > 0 {
+                                                    app.promote(ix, window, cx);
+                                                }
+                                            } else {
+                                                app.add_currency(&code, window, cx);
+                                            }
+                                        }
+                                    },
                                     (None, None) => {}
                                 });
                             });
@@ -198,15 +255,41 @@ pub(crate) fn open(
     });
 }
 
-/// A currency row: flag, code and name; ✓ when it is in the list.
-fn currency_item(code: &str, list: &[String]) -> CommandItem {
+/// Live conversion preview (`≈ $67.20`) for a `SetAmount` command so users can
+/// check a quick price without committing over their current anchor.
+fn command_preview(
+    app: &KurrencyApp,
+    command: &command::Command,
+    cx: &gpui_kit::App,
+) -> Option<String> {
+    let command::Command::SetAmount { code, amount } = command else {
+        return None;
+    };
+    let target = app
+        .rows
+        .iter()
+        .map(|row| row.code.as_str())
+        .find(|c| *c != code.as_str())?;
+    let converted = app.rates.read(cx).table().convert(*amount, code, target)?;
+    let parts = present::amount_parts(target, converted, &app.fmt, assets::has_glyph);
+    let prefix = match parts.symbol {
+        Some(sym) => format!("{sym} "),
+        None => String::new(),
+    };
+    Some(format!("≈ {prefix}{}{}", parts.integer, parts.fraction))
+}
+
+/// A currency row: flag, code and name; ✓ on the anchor, subtle "Switch" hint
+/// on listed rows so Enter's action is clear.
+fn currency_item(code: &str, list: &[String], anchor: Option<&str>) -> CommandItem {
     let name = money::display_name(code);
     let row_code = code.to_string();
     let row_name = name.clone();
+    let is_anchor = anchor == Some(code);
+    let is_listed = list.iter().any(|c| c == code);
     CommandItem::new()
-        // Read out; the child draws the row.
         .label(format!("{code}  {name}"))
-        .checked(list.iter().any(|c| c == code))
+        .checked(is_anchor)
         .child(move |_, cx| {
             let t = Tokens::get(cx);
             h_flex()
@@ -221,11 +304,21 @@ fn currency_item(code: &str, list: &[String]) -> CommandItem {
                 )
                 .child(
                     div()
+                        .flex_1()
                         .min_w(px(0.))
                         .truncate()
                         .text_color(t.muted)
                         .child(row_name.clone()),
                 )
+                .when(is_listed && !is_anchor, |el| {
+                    el.child(
+                        div()
+                            .flex_shrink_0()
+                            .text_size(px(11.))
+                            .text_color(t.muted)
+                            .child(tr!("palette.switch_hint")),
+                    )
+                })
         })
 }
 

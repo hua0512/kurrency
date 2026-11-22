@@ -110,14 +110,14 @@ impl KurrencyApp {
                 self.echo = None;
             }
             // The rows keep their last valid values.
-            // TODO(polish): the subtle shake from docs/DESIGN.md "Not yet built".
             Err(_) => self.echo = Some("—".into()),
         }
         cx.notify();
     }
 
     /// Enter (and blur): replace a valid expression with its result, or put
-    /// back the value from before the edit when it is invalid.
+    /// back the value from before the edit when it is invalid (shaking the
+    /// card as tactile feedback).
     pub(super) fn commit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.editing.is_none() {
             return;
@@ -137,6 +137,7 @@ impl KurrencyApp {
                 self.save_settings();
             }
             Err(_) => {
+                self.trigger_shake(cx);
                 self.revert(window, cx);
             }
         }

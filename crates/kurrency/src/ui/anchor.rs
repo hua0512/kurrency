@@ -1,23 +1,25 @@
-//! The anchor card (DESIGN §1): the source currency's flag, code and
-//! name, the ⇅ swap button, and the only amount input on screen. Idle, the
-//! amount is drawn formatted (muted symbol, dimmed decimals); while editing
-//! it is the raw expression with the "= 4,500" echo below. Under the card sit
-//! the quick-amount chips.
+//! The anchor card (DESIGN §1): the source currency's clickable flag/code/name,
+//! the ⇅ swap button, and the only amount input on screen. Idle, the amount is
+//! drawn formatted (muted symbol, dimmed decimals) with the unit rate to the
+//! first row underneath; while editing, the currency symbol stays pinned beside
+//! the raw input and expressions echo "= 4,500" below. Under the card sit the
+//! currency-scaled quick-amount pills.
 
 use std::sync::Arc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, BoxShadow, Context, FontFeatures, FontWeight, InteractiveElement as _, IntoElement,
     ParentElement as _, StatefulInteractiveElement as _, Styled as _, TextRun, Window, div, hsla,
-    px, transparent_black,
+    px,
 };
 use kurrency_core::i18n::tr;
 use kurrency_core::money;
-use kurrency_core::present::{self, QUICK_AMOUNTS};
+use kurrency_core::present;
 use rust_decimal::Decimal;
 
 use crate::app::{ANCHOR_CONTEXT, KurrencyApp, SwapAnchor};
@@ -25,10 +27,14 @@ use crate::assets;
 use crate::layout::metrics;
 use crate::ui::flag::flag;
 use crate::ui::motion::{self, Roll};
+use crate::ui::picker::{self, PickerMode};
 use crate::ui::theme::{SYMBOL_OPACITY, Tokens};
 
-// Lucide "arrow-down-up" (ISC), outside gpui-kit's default embedded icons.
+// Lucide "arrow-down-up" (ISC).
 const SWAP_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>"#;
+
+// Lucide "chevron-down" (ISC).
+const CHEVRON_DOWN_SVG: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>"#;
 
 const AMOUNT_SIZE: f32 = 36.;
 /// The anchor display's key in the digit rolls.
@@ -135,9 +141,6 @@ pub(crate) fn fit_size(
                 .width,
         )
     };
-    // As laid out: one element per digit (they roll), each rounded up to a
-    // whole pixel, which adds up over a long amount; the symbol is one
-    // element, then a quarter-em gap.
     let laid_out = |size: f32| {
         let digits: f32 = parts
             .integer
@@ -154,8 +157,6 @@ pub(crate) fn fit_size(
     if natural <= width {
         return size;
     }
-    // Text width scales with its size, but the rounding does not: start
-    // from the scaled size and step down half a pixel until it fits.
     let min = size * MIN_FIT;
     let mut fit = ((size * width / natural * 2.).floor() / 2.).max(min);
     while fit > min && laid_out(fit) > width {
@@ -183,21 +184,46 @@ pub(crate) fn render(
     };
     let editing = app.is_editing();
     let focused = app.anchor_focused(window, cx);
+    let symbol = present::display_symbol(&code, assets::has_glyph);
 
-    let title = h_flex()
+    // Clickable currency trigger: opens the palette in source-currency mode.
+    let selector = h_flex()
+        .id("anchor-currency")
+        .debug_selector(|| "anchor-currency".into())
+        .flex_1()
+        .min_w(px(0.))
         .h(px(metrics::CARD_TITLE))
+        .px(px(4.))
+        .ml(px(-4.))
         .gap_2()
+        .rounded(px(6.))
+        .cursor_pointer()
+        .hover(|s| s.bg(t.hover))
+        .tooltip(|window, cx| Tooltip::new(tr!("anchor.change_currency")).build(window, cx))
+        .on_click(cx.listener(|this, _, window, cx| {
+            picker::open_mode(this, "", PickerMode::SelectAnchor, window, cx);
+        }))
         .child(flag(&code, cx))
-        .child(div().ml_1().child(code_label(&code)))
+        .child(div().ml(px(2.)).child(code_label(&code)))
         .child(
             div()
-                .flex_1()
                 .min_w(px(0.))
                 .truncate()
                 .text_size(px(12.))
                 .text_color(t.muted)
                 .child(money::display_name(&code)),
         )
+        .child(
+            Icon::default()
+                .data(CHEVRON_DOWN_SVG)
+                .size(px(12.))
+                .text_color(t.muted),
+        );
+
+    let title = h_flex()
+        .h(px(metrics::CARD_TITLE))
+        .gap_1()
+        .child(selector)
         .when(app.rows.len() > 1, |el| {
             el.child(
                 Button::new("swap-anchor")
@@ -211,10 +237,8 @@ pub(crate) fn render(
         });
 
     let amount = if editing {
-        // The input pads itself, sets a 1.25rem line height for any text
-        // size and is 32px high; all three are overridden for the 36px
-        // figure. Its height goes through `Styled`: `Input::h` sizes only
-        // multi-line inputs, and the card would shrink 12px while editing.
+        // Keep the muted currency symbol pinned beside the input so entering
+        // and leaving edit mode causes zero horizontal jump.
         let input = Input::new(&app.anchor_input)
             .appearance(false)
             .line_height(px(metrics::CARD_AMOUNT))
@@ -222,10 +246,29 @@ pub(crate) fn render(
             .py_0()
             .text_size(px(AMOUNT_SIZE))
             .font_weight(FontWeight::MEDIUM);
-        div()
+        h_flex()
             .key_context(ANCHOR_CONTEXT)
             .w_full()
-            .child(gpui_kit::Styled::h(input, px(metrics::CARD_AMOUNT)))
+            .h(px(metrics::CARD_AMOUNT))
+            .items_center()
+            .when_some(symbol, |el, sym| {
+                el.child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(px(AMOUNT_SIZE))
+                        .line_height(px(metrics::CARD_AMOUNT))
+                        .font_weight(FontWeight::MEDIUM)
+                        .opacity(SYMBOL_OPACITY)
+                        .mr(px(AMOUNT_SIZE * 0.25))
+                        .child(sym),
+                )
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .min_w(px(0.))
+                    .child(gpui_kit::Styled::h(input, px(metrics::CARD_AMOUNT))),
+            )
             .into_any_element()
     } else {
         let display = match app.amount {
@@ -276,31 +319,66 @@ pub(crate) fn render(
         _ => head.into_any_element(),
     };
 
+    // While editing an expression, show the live "= 4,500" echo. Idle, show
+    // the unit rate against the first row ("1 USD = 0.8914 EUR") so the slot
+    // carries useful reference info instead of dead space.
+    let base_rate = app.rows.get(1).and_then(|first| {
+        let rate = app
+            .rates
+            .read(cx)
+            .table()
+            .convert(Decimal::ONE, &code, &first.code)?;
+        Some(present::inverse_rate_text(
+            &code,
+            &first.code,
+            rate,
+            app.fmt.style.decimal,
+        ))
+    });
+    let echo_text = app
+        .echo
+        .clone()
+        .filter(|_| editing)
+        .or_else(|| base_rate.map(Into::into));
     let echo = div()
         .h(px(metrics::CARD_ECHO))
         .text_size(px(12.))
         .text_color(t.muted)
         .font_features(tabular_numerals())
-        .when_some(app.echo.clone().filter(|_| editing), |el, echo| {
-            el.child(echo)
-        });
+        .truncate()
+        .children(echo_text);
+
+    let border_color = if focused {
+        t.accent
+    } else if t.accent_fill > 0. {
+        t.accent.opacity(t.accent_fill * 2.)
+    } else {
+        t.hairline
+    };
+    let halo_opacity = if t.accent_fill > 0. {
+        t.accent_fill * 1.6
+    } else if t.dark {
+        0.22
+    } else {
+        0.14
+    };
 
     let card = v_flex()
         .relative()
         .rounded(px(12.))
         .border_1()
-        // Slate edges the card in a wash of its accent.
-        .border_color(if t.accent_fill > 0. {
-            t.accent.opacity(t.accent_fill * 2.)
-        } else {
-            t.hairline
-        })
+        .border_color(border_color)
         .bg(t.card)
         .px(px(16.))
         .pt(px(metrics::CARD_PAD_TOP))
         .pb(px(metrics::CARD_PAD_BOTTOM))
-        // Dark: a faint inner glow along the edge instead of a shadow.
-        .when(t.dark, |el| {
+        .when(focused, |el| {
+            el.shadow(vec![
+                BoxShadow::new(px(0.), px(0.), t.accent.opacity(halo_opacity))
+                    .spread_radius(px(2.5)),
+            ])
+        })
+        .when(t.dark && !focused, |el| {
             el.child(
                 div()
                     .absolute()
@@ -313,65 +391,83 @@ pub(crate) fn render(
         .child(head)
         .child(echo);
 
-    // The 2px focus ring, offset 2px from the card.
+    let card = match app.motion.shake {
+        Some(version) => motion::shake(card, ("anchor-shake", version)),
+        None => card.into_any_element(),
+    };
+
+    // Preserve the RING gutter around the card for the soft focus halo.
     div()
         .mx(px(metrics::PAD_X - metrics::RING))
-        .p(px(2.))
-        .border_2()
-        .rounded(px(16.))
-        .border_color(if focused {
-            t.accent
-        } else {
-            transparent_black()
-        })
-        // Slate adds a soft accent halo around the ring.
-        .when(focused && t.accent_fill > 0., |el| {
-            el.shadow(vec![
-                BoxShadow::new(px(0.), px(0.), t.accent.opacity(t.accent_fill * 1.5))
-                    .spread_radius(px(3.)),
-            ])
-        })
+        .p(px(metrics::RING))
         .child(card)
         .into_any_element()
 }
 
-/// The 10 / 100 / 1k / 10k ghost chips; the one matching the amount is
-/// drawn selected in the accent.
+/// Currency-aware quick-amount pills in a soft segmented strip.
 pub(crate) fn render_quick_amounts(
     app: &KurrencyApp,
     cx: &mut Context<KurrencyApp>,
 ) -> impl IntoElement {
     let t = Tokens::get(cx);
+    let rate_per_usd = app.anchor().and_then(|code| {
+        app.rates
+            .read(cx)
+            .table()
+            .convert(Decimal::ONE, "USD", code)
+    });
+    let presets = present::quick_amounts(rate_per_usd);
+    let strip_bg = if t.dark {
+        hsla(0., 0., 1., 0.04)
+    } else {
+        hsla(0., 0., 0., 0.04)
+    };
+
     h_flex()
         .mt(px(metrics::CHIPS_GAP))
-        .px(px(metrics::PAD_X))
-        .gap_2()
-        .children(QUICK_AMOUNTS.iter().map(|&(label, value)| {
+        .mx(px(metrics::PAD_X))
+        .h(px(metrics::CHIPS))
+        .p(px(2.))
+        .gap(px(3.))
+        .rounded(px(9.))
+        .bg(strip_bg)
+        .children(presets.iter().map(|&(label, value)| {
             let value = Decimal::from(value);
             let selected = app.amount == Some(value);
             div()
                 .id(label)
                 .debug_selector(move || format!("quick-{label}"))
                 .flex_1()
-                .h(px(metrics::CHIPS))
+                .h_full()
                 .flex()
                 .items_center()
                 .justify_center()
-                .rounded(px(8.))
-                .border_1()
-                .border_color(if selected { t.accent } else { t.hairline })
-                .text_size(px(13.))
+                .rounded(px(7.))
+                .text_size(px(12.5))
                 .font_features(tabular_numerals())
-                .text_color(if selected { t.accent } else { t.text })
                 .cursor_pointer()
-                // Slate tints the selected chip.
                 .map(|el| {
-                    if selected && t.accent_fill > 0. {
-                        el.bg(t.accent.opacity(t.accent_fill))
+                    if selected {
+                        let bg = if t.accent_fill > 0. {
+                            t.accent.opacity(t.accent_fill)
+                        } else {
+                            t.card
+                        };
+                        let fg = if t.accent_fill > 0. { t.accent } else { t.text };
+                        el.bg(bg)
+                            .text_color(fg)
                             .font_weight(FontWeight::MEDIUM)
-                            .hover(|s| s.bg(t.accent.opacity(t.accent_fill * 1.4)))
+                            .shadow(vec![
+                                BoxShadow::new(
+                                    px(0.),
+                                    px(1.),
+                                    hsla(0., 0., 0., if t.dark { 0.35 } else { 0.08 }),
+                                )
+                                .blur_radius(px(2.)),
+                            ])
                     } else {
-                        el.hover(|s| s.bg(t.hover))
+                        el.text_color(t.muted)
+                            .hover(|s| s.text_color(t.text).bg(t.hover))
                     }
                 })
                 .child(quick_label(label))
@@ -381,14 +477,16 @@ pub(crate) fn render_quick_amounts(
         }))
 }
 
-/// A chip's text in the UI language (`1k` → `1千`, `10k` → `1万`).
+/// A chip's text in the UI language (`1k` → `1千`, `10k` → `1万`, …).
 fn quick_label(label: &str) -> String {
-    use kurrency_core::i18n::tr;
     match label {
         "10" => tr!("quick.ten"),
         "100" => tr!("quick.hundred"),
         "1k" => tr!("quick.thousand"),
         "10k" => tr!("quick.ten_thousand"),
+        "100k" => tr!("quick.hundred_thousand"),
+        "1m" => tr!("quick.million"),
+        "10m" => tr!("quick.ten_million"),
         other => other.to_string(),
     }
 }

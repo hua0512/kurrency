@@ -28,29 +28,41 @@ at the screen, with a minimum of 320×440.
 └────────────────────────────────────┘
 ```
 
-- **Anchor card.** It holds the source currency: flag, code, name, a ⇅ swap with the first row,
-  and the only amount input.
-- **Rows.** They're read-only. Clicking a row promotes it into the anchor, keeping the same
-  value, rounded to that currency's minor units. Clicking its change chip opens history
-  (§6). Hovering a row shows its name and the inverse rate ("1 EUR = 1.1215 USD").
+- **Anchor card.** It holds the source currency: clickable flag, code and name (opening the palette
+  in source-currency mode), a ⇅ swap with the first row, and the only amount input. While editing,
+  the muted currency symbol stays pinned beside the input. Below the amount sits the unit rate
+  against the first row when idle (`1 USD = 0.8914 EUR`), morphing into the expression echo
+  (`= 4,500`) while editing.
+- **Quick amounts.** A subtle segmented strip under the anchor card, scaled automatically to the
+  anchor currency's magnitude (`10 / 100 / 1k / 10k` for USD/EUR, `1k / 10k / 100k / 1M` for
+  JPY/KRW, `10k / 100k / 1M / 10M` for VND/IDR).
+- **Rows.** They're read-only, with right-aligned tabular amounts and a permanent two-line left
+  column (code over currency name) so hovering never shifts text vertically. Hovering swaps the
+  subtitle to the inverse rate (`1 EUR = 1.1219 USD`) and reveals a one-click copy icon beside the
+  amount. Clicking a row promotes it into the anchor, keeping the same value rounded to that
+  currency's minor units. Clicking its change chip opens history (§6).
 - **Reorder.** Rows reorder by dragging their ⋮⋮ grip (the row lifts and the others spring apart),
   or with Alt+↑/↓. Removing a row is in the context menu (Copy, Move to top, Remove).
-- **Undo toast.** It takes the place of the "+ Add" row.
+- **Bottom toast.** Replaces the "+ Add" row for undo ("JPY removed · Undo") and clipboard price
+  suggestions ("Convert ¥1,200 from clipboard? · Convert").
 - **Empty state.** It shows "Add a currency to start".
 
 ## 2. Input
 
-- **Expressions.** The anchor accepts `+ − × ÷`, parentheses and `k`/`m` suffixes (`1.5k*3`).
-  Enter commits the expression; Esc reverts it, and a second Esc leaves the input. ↑/↓ step a
-  plain number (Shift multiplies the step by 10). In comma-decimal formats, `,` is the decimal mark.
+- **Expressions.** The anchor accepts `+ − × ÷`, percentages (`100+8.5%`, `200-15%`, `50%`),
+  parentheses and `k`/`m` suffixes (`1.5k*3`). Enter commits the expression (or shakes the card
+  and reverts when invalid); Esc reverts it, and a second Esc leaves the input. ↑/↓ step a plain
+  number (Shift multiplies the step by 10). In comma-decimal formats, `,` is the decimal mark.
 - **Type anywhere.** With nothing focused, typing a digit, `.`, `,`, `(` or `-` starts editing the
   anchor. Typing a letter opens the palette with that letter already filled in.
-- **Smart paste.** Pasting `€45.99`, `¥1,200`, `1.234,56 €`, `HK$300` or `300 hkd` sets that
-  currency as the anchor (adding it if needed) and fills in the amount. An ambiguous symbol prefers
-  a currency already in the list.
-- **Palette (Ctrl+K).** It searches by code, English name, Chinese name and symbol family. It also
-  takes commands:
-  - `50 gbp` sets an amount;
+- **Smart paste & clipboard hint.** Pasting `€45.99`, `¥1,200`, `1.234,56 €`, `HK$300` or
+  `300 hkd` sets that currency as the anchor (adding it if needed) and fills in the amount. An
+  ambiguous symbol prefers a currency already in the list. Returning to the window with a new
+  currency-tagged price on the clipboard offers a one-click convert toast.
+- **Palette (Ctrl+K).** Empty search lists pinned and popular currencies first. It searches by
+  code, English name, Chinese name and symbol family, and confirms a listed currency by promoting
+  it to the anchor (rather than deleting it). It also takes commands:
+  - `50 gbp` sets an amount (with a live `≈ …` conversion preview right in the command row);
   - `+chf` adds a currency and `-jpy` removes one;
   - `eur>usd` opens history.
 
@@ -60,23 +72,24 @@ at the screen, with a minimum of 320×440.
 
 ## 3. Trust and freshness
 
-- **Freshness dot.** The header dot shows how fresh the rates are:
-  - slate: under 12 h old;
-  - amber: stale;
-  - hollow: offline or updating.
+- **Freshness pill.** The header pill combines freshness status and manual refresh:
+  - slate dot: under 12 h old (morphs into a refresh icon on hover);
+  - amber dot: stale;
+  - hollow ring: offline or updating.
 
   Next to it is the relative age ("2h"). Its tooltip shows the source, the date, the next refresh
   or the error.
-- **Daily change.** Each row's chip compares today's rate with the previous day's. It shows `·`
-  when the rate is unchanged or the data is unknown.
-- **Copy.** Copying a row (Ctrl+C) puts the raw number on the clipboard, and a ✓ flashes in place
-  of the row's chip.
+- **Daily change.** Each row's chip compares today's rate with the previous day's, showing a
+  muted `0.0%` pill when unchanged or `·` when the previous day is unknown, with hover feedback.
+- **Copy.** Copying a row (hover copy button, context menu, or Ctrl+C) puts the raw number on the
+  clipboard, and a ✓ flashes in place of the row's chip.
 
 ## 4. Motion
 
 All motion is subtle, under 250 ms and interruptible:
 - digits roll when they change;
 - the promoted row slides into the anchor;
+- the anchor card shakes lightly when committing an invalid expression;
 - rows fade in and out when added or removed;
 - pages slide in and out;
 - the freshness dot pulses once when an update starts.
@@ -111,14 +124,17 @@ All motion is subtle, under 250 ms and interruptible:
 ## 6. History page
 
 - **Opening it.** It slides in from the change chip, from Ctrl+Enter or from the palette, and
-  shows the row's currency against the anchor. The title is the pair as BASE / QUOTE (`USD / EUR`,
-  meaning 1 USD = x EUR), and ⇄ flips the pair.
+  shows the row's currency against the anchor. It reuses the single top TitleBar with back, both
+  pair flags (`USD / EUR`, meaning 1 USD = x EUR), and ⇄ to flip the pair.
 - **Content.**
-  - The current rate, with the change over the selected range on the line above it.
-  - An area chart with a hover crosshair, and ranges 7D / 30D / 1Y / 5Y / MAX. The chart takes
-    the height the page has left, from 100px (so the stats still fit in the shortest window)
-    to 260px (taller, a small move would look like a big one).
-  - High and low (with their dates) and the average, side by side in one row.
+  - The current rate, with the change over the selected range on the line above it and the user's
+    current anchor amount converted underneath.
+  - A trend-coloured area chart with subtle High/Low reference lines and ranges 7D / 30D / 1Y / 5Y /
+    MAX. Scrubbing updates the top readout (including "your amount then" and difference vs today)
+    without a floating bubble obscuring the curve; dragging across two dates measures the span's
+    change. The chart takes the height the page has left, from 100px to 260px.
+  - A range position bar showing where today's rate sits between the range's Low and High, above
+    High, Low (with dates) and Average side by side.
 - **Data.** History is cached per pair, and only missing days are fetched. Offline with no cache,
   the page says "History unavailable offline".
 
@@ -181,7 +197,4 @@ On macOS, Cmd replaces Ctrl.
 ## Not yet built
 
 - Traditional Chinese.
-- Clipboard hint ("Convert ¥1,200 from clipboard?").
-- Measuring a change by dragging across the history chart.
-- "Your amount then" on chart hover.
-- Shaking the input on an invalid expression.
+- Always-on-top window pin (pending runtime window-level support in GPUI).

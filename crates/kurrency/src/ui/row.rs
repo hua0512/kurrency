@@ -1,14 +1,14 @@
 //! The read-only rows under the anchor card (DESIGN §1, §3), 56px each:
-//! flag, code, the converted amount, and the daily change chip. Hovering a
-//! row shows its name and the inverse rate. Clicking the chip opens the
-//! history page; clicking anywhere else promotes the row to the anchor.
+//! flag, code with a calm subtitle (currency name at rest, inverse rate on
+//! hover with zero vertical jump), right-aligned converted amount with a
+//! hover copy button, and the clickable daily change chip.
 //!
-//! Rows reorder by dragging their ⋮⋮ grip (docs/DESIGN.md §1), which lifts
-//! the row while the others spring apart around the drop slot, or with
-//! Alt+↑/↓ on a focused row.
+//! Rows reorder by dragging their ⋮⋮ grip, which lifts the row while the
+//! others spring apart around the drop slot, or with Alt+↑/↓ on a focused row.
 
 use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenuItem};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -34,9 +34,15 @@ use crate::ui::theme::{CHIP_TINT, Tokens};
 const INSET: f32 = metrics::PAD_X;
 /// The padding inside the highlight, before the flag and after the chip.
 const ROW_PAD: f32 = 8.;
+/// Gap between the flag and the code column.
+const FLAG_GAP: f32 = 10.;
 /// Where the code column starts (and the hairlines with it).
-const CODE_X: f32 = INSET + ROW_PAD + 20. + 16.;
-const CODE_W: f32 = 82.;
+const CODE_X: f32 = INSET + ROW_PAD + 20. + FLAG_GAP;
+/// Minimum space reserved for the code + short subtitle column when fitting
+/// very long converted amounts.
+const MIN_CODE_W: f32 = 54.;
+/// Width of the hover one-click copy button.
+const COPY_BTN: f32 = 24.;
 const CHIP_SLOT: f32 = 62.;
 /// Row amounts: 18px, weight 450.
 const AMOUNT_SIZE: f32 = 18.;
@@ -44,16 +50,22 @@ const AMOUNT_WEIGHT: FontWeight = FontWeight(450.);
 
 /// A row amount's text size: 18px, smaller when the amount would not fit
 /// between the code column and the change chip.
-fn amount_size(code: &str, value: Decimal, fmt: &money::Format, window: &Window) -> f32 {
-    // Everything in the row beside the amount column, and a little air.
-    let beside = CODE_X + CODE_W + CHIP_SLOT + ROW_PAD + INSET + 4.;
+fn amount_size(
+    code: &str,
+    value: Decimal,
+    fmt: &money::Format,
+    hovered: bool,
+    window: &Window,
+) -> f32 {
+    let copy_space = if hovered { COPY_BTN + 6. } else { 0. };
+    let beside = CODE_X + MIN_CODE_W + 8. + copy_space + 8. + CHIP_SLOT + ROW_PAD + INSET + 4.;
     fit_size(
         code,
         value,
         fmt,
         AMOUNT_SIZE,
         AMOUNT_WEIGHT,
-        f32::from(window.viewport_size().width) - beside,
+        (f32::from(window.viewport_size().width) - beside).max(72.),
         window,
     )
 }
@@ -63,8 +75,6 @@ pub(crate) fn render_list(
     window: &mut Window,
     cx: &mut Context<KurrencyApp>,
 ) -> impl IntoElement {
-    // While a row is dragged, the list follows the pointer: the drop slot
-    // is worked out from where the lifted row's middle is.
     let mut list = v_flex()
         .w_full()
         .mt(px(metrics::LIST_GAP))
@@ -103,7 +113,6 @@ pub(crate) fn render_list(
             None => row,
         });
     }
-    // Ghosts past the end (the last row was removed).
     let end = app.rows.len().max(1);
     for leaving in app.motion.leaving.iter().filter(|l| l.ix >= end) {
         list = list.child(render_ghost(app, leaving, window, cx));
@@ -186,15 +195,10 @@ pub(crate) struct DraggedRow {
 #[derive(Debug, Clone)]
 pub(crate) struct RowDrag {
     pub code: String,
-    /// The list slot the row would drop into (its index in `rows` minus 1).
     pub slot: usize,
-    /// The slot it was over a moment ago, whose gap closes.
     pub previous: Option<usize>,
-    /// Bumped when `slot` changes, restarting the gaps' animation.
     pub version: usize,
-    /// Where the pointer holds the row, from its top.
     pub grab_y: f32,
-    /// The pointer and the list's top, in window px.
     pub pointer_y: f32,
     pub list_top: f32,
 }
@@ -206,8 +210,8 @@ pub(crate) struct RowDragView {
     value: Option<Decimal>,
     fmt: money::Format,
     change: Change,
+    has_previous: bool,
     green_up: bool,
-    /// The pointer's x when the drag began, which the row stays under.
     start_x: Pixels,
     width: Pixels,
 }
@@ -223,6 +227,7 @@ impl RowDragView {
             value: app.value_of(code, cx),
             fmt: app.fmt,
             change: Change::between(today, previous),
+            has_previous: today.is_some() && previous.is_some(),
             green_up: app.green_up(),
             start_x: window.mouse_position().x,
             width: window.viewport_size().width - px(2. * INSET),
@@ -242,7 +247,7 @@ impl Render for RowDragView {
                 &code,
                 value,
                 &self.fmt,
-                amount_size(&code, value, &self.fmt, window),
+                amount_size(&code, value, &self.fmt, false, window),
                 AMOUNT_WEIGHT,
                 t.decimals,
                 None,
@@ -260,7 +265,6 @@ impl Render for RowDragView {
                 BoxShadow::new(px(0.), px(1.), hsla(0., 0., 0., 0.08)).blur_radius(px(3.)),
             ]
         };
-        // Pinned to the column the drag started in.
         let dx = self.start_x - window.mouse_position().x;
         div()
             .relative()
@@ -275,7 +279,6 @@ impl Render for RowDragView {
                     .top(px(-1.))
                     .w(self.width + px(2. * LIFT))
                     .h(px(metrics::ROW + 1.))
-                    // The row's 8px inset (padding and border) plus the lift.
                     .pl(px(ROW_PAD + LIFT - 1.))
                     .pr(px(ROW_PAD + LIFT - 1.))
                     .rounded(px(10.))
@@ -285,7 +288,6 @@ impl Render for RowDragView {
                     } else {
                         t.hairline
                     })
-                    // Dark themes raise it by lightening the card a touch.
                     .bg(if t.dark {
                         t.card.blend(hsla(0., 0., 1., 0.06))
                     } else {
@@ -295,15 +297,38 @@ impl Render for RowDragView {
                     .cursor_grabbing()
                     .child(grip(&t, LIFT + 1.))
                     .child(flag(&code, cx))
-                    .child(div().w(px(CODE_X - INSET - ROW_PAD - 20.)).flex_shrink_0())
-                    .child(div().w(px(CODE_W)).flex_shrink_0().child(code_label(&code)))
-                    .child(div().flex_1().min_w(px(0.)).overflow_hidden().child(amount))
+                    .child(div().w(px(FLAG_GAP)).flex_shrink_0())
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w(px(MIN_CODE_W))
+                            .child(code_label(&code))
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .text_color(t.muted)
+                                    .truncate()
+                                    .child(money::display_name(&code)),
+                            ),
+                    )
                     .child(
                         h_flex()
-                            .min_w(px(CHIP_SLOT))
-                            .justify_center()
                             .flex_shrink_0()
-                            .child(render_chip(self.change, self.green_up, &t)),
+                            .gap(px(8.))
+                            .items_center()
+                            .child(amount)
+                            .child(
+                                h_flex()
+                                    .min_w(px(CHIP_SLOT))
+                                    .justify_end()
+                                    .child(render_chip(
+                                        self.change,
+                                        self.has_previous,
+                                        self.fmt.style.decimal,
+                                        self.green_up,
+                                        &t,
+                                    )),
+                            ),
                     ),
             )
     }
@@ -336,7 +361,7 @@ fn render_ghost(
             &code,
             value,
             &app.fmt,
-            amount_size(&code, value, &app.fmt, window),
+            amount_size(&code, value, &app.fmt, false, window),
             AMOUNT_WEIGHT,
             t.decimals,
             None,
@@ -349,9 +374,22 @@ fn render_ghost(
                 .h(px(metrics::ROW - 1.))
                 .px(px(ROW_PAD))
                 .child(flag(&code, cx))
-                .child(div().w(px(CODE_X - INSET - ROW_PAD - 20.)).flex_shrink_0())
-                .child(div().w(px(CODE_W)).flex_shrink_0().child(code_label(&code)))
-                .children(amount),
+                .child(div().w(px(FLAG_GAP)).flex_shrink_0())
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w(px(MIN_CODE_W))
+                        .child(code_label(&code))
+                        .child(
+                            div()
+                                .text_size(px(11.))
+                                .text_color(t.muted)
+                                .truncate()
+                                .child(money::display_name(&code)),
+                        ),
+                )
+                .children(amount)
+                .child(div().w(px(CHIP_SLOT + 8.)).flex_shrink_0()),
         )
         .child(
             div()
@@ -378,7 +416,6 @@ fn render_row(
     let row = &app.rows[ix];
     let code = row.code.clone();
     let anchor = app.anchor().unwrap_or_default().to_string();
-    // No hover while a row is being dragged.
     let hovered = app.hovered.as_deref() == Some(code.as_str()) && app.drag.is_none();
     let green_up = app.green_up();
 
@@ -386,17 +423,19 @@ fn render_row(
     let table = rates.table();
     let today = table.convert(Decimal::ONE, &anchor, &code);
     let previous = rates.previous().and_then(|p| p.cross_rate(&anchor, &code));
+    let has_previous = today.is_some() && previous.is_some();
     let change = Change::between(today, previous);
     let inverse = table
         .convert(Decimal::ONE, &code, &anchor)
         .map(|rate| present::inverse_rate_text(&code, &anchor, rate, app.fmt.style.decimal));
 
-    let amount = match app.value_of(&code, cx) {
+    let value = app.value_of(&code, cx);
+    let amount = match value {
         Some(value) => amount_text(
             &code,
             value,
             &app.fmt,
-            amount_size(&code, value, &app.fmt, window),
+            amount_size(&code, value, &app.fmt, hovered, window),
             AMOUNT_WEIGHT,
             t.decimals,
             app.motion.roll(&code),
@@ -408,38 +447,54 @@ fn render_row(
             .into_any_element(),
     };
 
+    // Permanent two-line left column: currency name at rest, inverse rate on
+    // hover — zero vertical shift when pointing at a row.
+    let subtitle = if hovered {
+        inverse.unwrap_or_else(|| money::display_name(&code))
+    } else {
+        money::display_name(&code)
+    };
     let code_col = v_flex()
-        .w(px(CODE_W))
-        .flex_shrink_0()
-        .child(code_label(&code))
-        .when(hovered, |el| {
-            el.child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(t.muted)
-                    .truncate()
-                    .child(money::display_name(&code)),
-            )
-        });
-
-    // Lined up on the left and only as wide as they are, so a test can see
-    // the amount end before the chip.
-    let amount_col = v_flex()
         .flex_1()
-        .min_w(px(0.))
-        .items_start()
+        .min_w(px(MIN_CODE_W))
         .overflow_hidden()
-        .child(amount)
-        .when_some(inverse.filter(|_| hovered), |el, inverse| {
-            el.child(
-                div()
-                    .text_size(px(11.))
-                    .text_color(t.muted)
-                    .font_features(tabular_numerals())
-                    .whitespace_nowrap()
-                    .child(inverse),
-            )
-        });
+        .child(code_label(&code))
+        .child(
+            div()
+                .text_size(px(11.))
+                .text_color(t.muted)
+                .font_features(tabular_numerals())
+                .truncate()
+                .child(subtitle),
+        );
+
+    let copy_btn = (hovered && value.is_some()).then(|| {
+        let copy_code = code.clone();
+        let selector = format!("copy-{code}");
+        let copy_hover = if t.dark {
+            hsla(0., 0., 1., 0.08)
+        } else {
+            hsla(0., 0., 0., 0.07)
+        };
+        div()
+            .id(("copy-row", ix))
+            .debug_selector(move || selector.clone())
+            .size(px(COPY_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .flex_shrink_0()
+            .rounded(px(6.))
+            .text_color(t.muted)
+            .cursor_pointer()
+            .hover(move |s| s.bg(copy_hover).text_color(t.text))
+            .tooltip(|window, cx| Tooltip::new(tr!("row.copy_value")).build(window, cx))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.copy_row(&copy_code, cx);
+                cx.stop_propagation();
+            }))
+            .child(Icon::new(IconName::Copy).size(px(13.)))
+    });
 
     let chip_code: SharedString = code.clone().into();
     let chip = h_flex()
@@ -450,12 +505,10 @@ fn render_row(
         })
         .min_w(px(CHIP_SLOT))
         .h(px(24.))
-        .justify_center()
+        .justify_end()
         .flex_shrink_0()
         .cursor_pointer()
-        .tooltip(|window, cx| {
-            gpui_kit::component::tooltip::Tooltip::new(tr!("row.change_tooltip")).build(window, cx)
-        })
+        .tooltip(|window, cx| Tooltip::new(tr!("row.change_tooltip")).build(window, cx))
         .on_click(move |_, window, cx| {
             window.dispatch_action(
                 Box::new(OpenRowDetail {
@@ -466,15 +519,27 @@ fn render_row(
             cx.stop_propagation();
         })
         .child(match &app.motion.copied {
-            // Copying flashes a check mark in place of the chip.
-            Some((copied, version)) if *copied == code => motion::fade_in(
-                Icon::new(IconName::Check)
-                    .size(px(16.))
-                    .text_color(t.accent),
-                ElementId::NamedInteger(format!("copied-{code}").into(), *version as u64),
-            ),
-            _ => render_chip(change, green_up, &t).into_any_element(),
+            Some((copied, version)) if *copied == code => h_flex()
+                .w(px(CHIP_SLOT))
+                .justify_center()
+                .child(motion::fade_in(
+                    Icon::new(IconName::Check)
+                        .size(px(16.))
+                        .text_color(t.accent),
+                    ElementId::NamedInteger(format!("copied-{code}").into(), *version as u64),
+                ))
+                .into_any_element(),
+            _ => render_chip(change, has_previous, app.fmt.style.decimal, green_up, &t)
+                .into_any_element(),
         });
+
+    let right_group = h_flex()
+        .flex_shrink_0()
+        .items_center()
+        .gap(px(6.))
+        .children(copy_btn)
+        .child(div().flex_shrink_0().child(amount))
+        .child(div().pl(px(2.)).flex_shrink_0().child(chip));
 
     let focus_handle = row.focus_handle.clone();
     let hover_code = code.clone();
@@ -505,7 +570,6 @@ fn render_row(
         .on_click(cx.listener({
             let code = code.clone();
             move |this, _, window, cx| {
-                // The release that ends a drag is not a click.
                 if this.drag.is_some() {
                     return;
                 }
@@ -515,18 +579,17 @@ fn render_row(
             }
         }))
         .child(flag(&code, cx))
-        .child(div().w(px(CODE_X - INSET - ROW_PAD - 20.)).flex_shrink_0())
+        .child(div().w(px(FLAG_GAP)).flex_shrink_0())
         .child(code_col)
-        .child(amount_col)
-        .child(chip);
+        .child(div().w(px(8.)).flex_shrink_0())
+        .child(right_group);
+
     let content = match (&app.motion.swap, app.motion.settling(&code)) {
-        // A reordered row springs into its new place.
         (_, Some((from, version))) => motion::settle(
             content,
             ElementId::NamedInteger(format!("row-settle-{code}").into(), version as u64),
             from,
         ),
-        // The old anchor drops into the promoted row's place.
         (Some(swap), None) if swap.demoted == code => {
             motion::slide_in(content, ("row-drop", swap.version), -14.)
         }
@@ -534,8 +597,7 @@ fn render_row(
     };
 
     // The drag handle: the row's left inset and its flag, where the ⋮⋮
-    // grip shows on hover. A press without a drag still promotes the row
-    // (the row body under it takes the click); dragging it lifts the row.
+    // grip shows on hover.
     let app_entity = cx.entity();
     let handle = div()
         .id(("row-grip", ix))
@@ -546,7 +608,7 @@ fn render_row(
         .absolute()
         .left(px(INSET))
         .top_0()
-        .w(px(CODE_X - INSET - 8.))
+        .w(px(ROW_PAD + 20. + 4.))
         .h(px(metrics::ROW - 1.))
         .cursor_grab()
         .when(hovered, |el| el.child(grip(&t, 2.)))
@@ -576,15 +638,48 @@ fn render_row(
         .child(handle)
 }
 
-/// `▾ 0.3%` on a 10% tint of its colour, or a muted `·`. The arrow is drawn
-/// a little smaller than the figure, as in the mockups.
-fn render_chip(change: Change, green_up: bool, t: &Tokens) -> impl IntoElement {
-    let (up, pct) = match change {
+/// `▲ 0.3%` on a 10% tint of its colour, or a subtle muted pill for unchanged
+/// (`0.0%`) / unknown (`·`) so every row's history chip reads as interactive.
+fn render_chip(
+    change: Change,
+    has_previous: bool,
+    decimal: char,
+    green_up: bool,
+    t: &Tokens,
+) -> impl IntoElement {
+    let (up, _pct) = match change {
         Change::Flat => {
+            let label = if has_previous {
+                format!("0{decimal}0%")
+            } else {
+                change.label()
+            };
+            let bg = if t.dark {
+                hsla(0., 0., 1., 0.045)
+            } else {
+                hsla(0., 0., 0., 0.045)
+            };
+            let hover_bg = if t.dark {
+                hsla(0., 0., 1., 0.09)
+            } else {
+                hsla(0., 0., 0., 0.085)
+            };
             return div()
-                .text_size(px(13.))
+                .h(px(22.))
+                .min_w(px(46.))
+                .px(px(7.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded(px(6.))
+                .bg(bg)
+                .hover(move |s| s.bg(hover_bg))
+                .text_size(px(11.))
                 .text_color(t.muted)
-                .child(change.label());
+                .font_weight(FontWeight::MEDIUM)
+                .font_features(tabular_numerals())
+                .whitespace_nowrap()
+                .child(label);
         }
         Change::Up(pct) => (true, pct),
         Change::Down(pct) => (false, pct),
@@ -595,7 +690,11 @@ fn render_chip(change: Change, green_up: bool, t: &Tokens) -> impl IntoElement {
         .split_once(' ')
         .map_or(figure.as_str(), |(_, f)| f)
         .to_string();
-    let _ = pct;
+    let figure = if decimal == '.' {
+        figure
+    } else {
+        figure.replace('.', &decimal.to_string())
+    };
     div()
         .h(px(22.))
         .px(px(7.))
@@ -604,6 +703,7 @@ fn render_chip(change: Change, green_up: bool, t: &Tokens) -> impl IntoElement {
         .gap(px(5.))
         .rounded(px(6.))
         .bg(color.opacity(CHIP_TINT))
+        .hover(move |s| s.bg(color.opacity(CHIP_TINT * 1.8)))
         .text_color(color)
         .font_weight(FontWeight::MEDIUM)
         .font_features(tabular_numerals())

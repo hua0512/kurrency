@@ -1,17 +1,16 @@
-//! The header (DESIGN §1, §3): the "Kurrency" title, the freshness dot
-//! with the relative age, a refresh button, and the gear. Replaces the v1
-//! footer: hover the dot for the source, date and next refresh; click it to
-//! see a failure, or to refresh.
+//! The unified single-layer TitleBar (DESIGN §1, §3, §6, §7):
+//! - on the list: "Kurrency", a morphed freshness/refresh pill, and Settings;
+//! - on the history page: back button, pair flags & codes, loading spinner and ⇄ flip;
+//! - on Settings: back button and "Settings".
 
 use std::f32::consts::PI;
 use std::time::Duration;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::notification::Notification;
+use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::tooltip::Tooltip;
-use gpui_kit::component::{
-    Disableable as _, IconName, Sizable as _, TitleBar, WindowExt as _, h_flex, v_flex,
-};
+use gpui_kit::component::{Icon, IconName, Sizable as _, TitleBar, WindowExt as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, Context, FontWeight, InteractiveElement as _, IntoElement,
@@ -20,8 +19,10 @@ use gpui_kit::{
 use kurrency_core::i18n::tr;
 use kurrency_core::rates::{Dot, Freshness};
 
-use crate::app::{KurrencyApp, OpenSettings, RefreshRates};
+use crate::app::{HeaderPage, KurrencyApp, OpenSettings, RefreshRates};
 use crate::layout::metrics;
+use crate::ui::detail::flip_icon;
+use crate::ui::flag::flag;
 use crate::ui::theme::Tokens;
 
 /// A short pulse each time an update starts (the motion rule's 250ms cap);
@@ -38,85 +39,149 @@ const REFRESH_SHORTCUT: &str = if cfg!(target_os = "macos") {
 
 pub(crate) fn render(app: &KurrencyApp, cx: &mut Context<KurrencyApp>) -> impl IntoElement {
     let t = Tokens::get(cx);
-    let rates = app.rates.read(cx);
-    let freshness = rates.freshness(app.rows.iter().map(|row| row.code.as_str()));
-    let refreshing = rates.is_refreshing();
-    let breaths = rates.refreshes();
-    let refresh_hint = tr!("header.refresh", shortcut = REFRESH_SHORTCUT);
-
-    TitleBar::new()
-        .h(px(metrics::HEADER))
-        .pl(px(metrics::PAD_X))
-        .bg(t.bg)
-        .border_color(t.bg)
-        .child(
+    let content = match app.header_page() {
+        None => render_main(app, &t, cx).into_any_element(),
+        Some(HeaderPage::Detail(view)) => {
+            let view = view.clone();
+            let (base, quote, busy) = view.read_with(cx, |v, _| {
+                (
+                    v.base().to_string(),
+                    v.quote().to_string(),
+                    v.is_busy_with_chart(),
+                )
+            });
             h_flex()
-                .id("header")
-                .group("header")
+                .id("header-detail")
                 .w_full()
+                .pl(px(metrics::PAD_X - 8.))
                 .pr(px(metrics::PAD_X - 6.))
-                .justify_between()
+                .gap_1()
                 .child(
-                    div()
-                        .text_size(px(16.))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child("Kurrency"),
+                    Button::new("detail-back")
+                        .ghost()
+                        .small()
+                        .icon(IconName::ChevronLeft)
+                        .text_color(t.text)
+                        .tooltip(tr!("detail.back"))
+                        .occlude()
+                        .on_click(cx.listener(|this, _, window, cx| this.close_page(window, cx))),
                 )
                 .child(
                     h_flex()
-                        .gap_1()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .gap(px(6.))
+                        .items_center()
+                        .child(flag(&base, cx))
                         .child(
-                            // Revealed on hover; Ctrl+R works any time.
                             div()
-                                .opacity(0.)
-                                .group_hover("header", |s| s.opacity(1.))
-                                .child(
-                                    Button::new("refresh-rates")
-                                        .ghost()
-                                        .xsmall()
-                                        .icon(IconName::RefreshCw)
-                                        .text_color(t.muted)
-                                        .disabled(refreshing)
-                                        .tooltip(refresh_hint)
-                                        // `gpui_kit`'s `TitleBar` marks the whole
-                                        // header as the window's drag area, which
-                                        // Windows treats as the native caption: a
-                                        // left click there is consumed by the system
-                                        // and the button never gets its mouse-up.
-                                        // Occluding the control keeps the caption
-                                        // hitbox out from under it.
-                                        .occlude()
-                                        .on_click(|_, window, cx| {
-                                            window.dispatch_action(Box::new(RefreshRates), cx);
-                                        }),
-                                ),
+                                .text_size(px(15.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(base),
                         )
-                        .child(render_freshness(freshness, breaths, &t))
+                        .child(div().text_size(px(14.)).text_color(t.muted).child("/"))
+                        .child(flag(&quote, cx))
                         .child(
-                            Button::new("settings")
-                                .ghost()
-                                .small()
-                                .icon(IconName::Settings)
-                                .text_color(t.text)
-                                .tooltip(tr!("header.settings"))
-                                // See the refresh button above: without this the
-                                // header's native caption area eats the click.
-                                .occlude()
-                                .on_click(|_, window, cx| {
-                                    window.dispatch_action(Box::new(OpenSettings), cx);
-                                }),
+                            div()
+                                .text_size(px(15.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(quote),
                         ),
+                )
+                .when(busy, |el| el.child(Spinner::new().xsmall().color(t.muted)))
+                .child(
+                    Button::new("detail-flip")
+                        .ghost()
+                        .small()
+                        .icon(flip_icon())
+                        .text_color(t.text)
+                        .tooltip(tr!("detail.flip"))
+                        .occlude()
+                        .on_click(move |_, _, cx| {
+                            view.update(cx, crate::ui::detail::DetailView::flip);
+                        }),
+                )
+                .into_any_element()
+        }
+        Some(HeaderPage::Settings) => h_flex()
+            .id("header-settings")
+            .w_full()
+            .pl(px(metrics::PAD_X - 8.))
+            .pr(px(metrics::PAD_X - 6.))
+            .gap_1()
+            .child(
+                Button::new("settings-back")
+                    .ghost()
+                    .small()
+                    .icon(IconName::ChevronLeft)
+                    .text_color(t.text)
+                    .tooltip(tr!("settings.back"))
+                    .occlude()
+                    .on_click(cx.listener(|this, _, window, cx| this.close_page(window, cx))),
+            )
+            .child(
+                div()
+                    .text_size(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(tr!("settings.title")),
+            )
+            .into_any_element(),
+    };
+
+    TitleBar::new()
+        .h(px(metrics::HEADER))
+        .bg(t.bg)
+        .border_color(t.bg)
+        .child(content)
+}
+
+fn render_main(app: &KurrencyApp, t: &Tokens, cx: &Context<KurrencyApp>) -> impl IntoElement {
+    let rates = app.rates.read(cx);
+    let freshness = rates.freshness(app.rows.iter().map(|row| row.code.as_str()));
+    let breaths = rates.refreshes();
+
+    h_flex()
+        .id("header")
+        .w_full()
+        .pl(px(metrics::PAD_X))
+        .pr(px(metrics::PAD_X - 6.))
+        .justify_between()
+        .child(
+            div()
+                .text_size(px(16.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child("Kurrency"),
+        )
+        .child(
+            h_flex()
+                .gap_1()
+                .child(render_freshness(freshness, breaths, t))
+                .child(
+                    Button::new("settings")
+                        .ghost()
+                        .small()
+                        .icon(IconName::Settings)
+                        .text_color(t.text)
+                        .tooltip(tr!("header.settings"))
+                        // `gpui_kit`'s `TitleBar` marks the whole header as the
+                        // window's drag area; occlude interactive controls so
+                        // Windows' native caption hitbox does not eat clicks.
+                        .occlude()
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(OpenSettings), cx);
+                        }),
                 ),
         )
 }
 
+/// The single freshness + refresh pill: shows the status dot and relative age,
+/// morphing the dot into a refresh icon on hover when healthy.
 fn render_freshness(f: Freshness, breaths: usize, t: &Tokens) -> impl IntoElement {
     let color = match f.dot {
         Dot::Fresh | Dot::Offline => t.accent,
         Dot::Stale => t.amber,
     };
-    // Updating: a hollow ring in the dot's colour, at lower opacity, for as
-    // long as the fetch lasts. Offline: a hollow muted ring.
+    let can_morph = !f.updating && f.error.is_none();
     let dot = div()
         .size(px(DOT))
         .rounded_full()
@@ -136,24 +201,56 @@ fn render_freshness(f: Freshness, breaths: usize, t: &Tokens) -> impl IntoElemen
         dot.into_any_element()
     };
 
+    let indicator = div()
+        .relative()
+        .size(px(12.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            div()
+                .when(can_morph, |el| {
+                    el.group_hover("freshness", |s| s.opacity(0.))
+                })
+                .child(dot),
+        )
+        .when(can_morph, |el| {
+            el.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .opacity(0.)
+                    .group_hover("freshness", |s| s.opacity(1.))
+                    .child(
+                        Icon::new(IconName::RefreshCw)
+                            .size(px(11.))
+                            .text_color(t.text),
+                    ),
+            )
+        });
+
     let tooltip = f.clone();
     let error = f.error.clone();
+    let updating = f.updating;
     h_flex()
         .id("freshness")
-        // The header is the window's native drag area; occlude the clickable
-        // parts (see the refresh button) so the caption does not eat clicks.
+        .group("freshness")
         .occlude()
         .h(px(28.))
         .px_1p5()
-        .gap(px(6.))
+        .gap(px(5.))
         .rounded(px(6.))
         .cursor_pointer()
         .hover(|s| s.bg(t.hover))
-        .child(dot)
+        .child(indicator)
         .child(
             div()
                 .text_size(px(13.))
                 .text_color(t.muted)
+                .group_hover("freshness", |s| s.text_color(t.text))
                 .child(f.age.clone()),
         )
         .tooltip(move |window, cx| {
@@ -172,12 +269,13 @@ fn render_freshness(f: Freshness, breaths: usize, t: &Tokens) -> impl IntoElemen
             })
             .build(window, cx)
         })
-        // A failure shows its details; otherwise the dot refreshes.
+        // A failure shows its details; otherwise clicking refreshes.
         .on_click(move |_, window, cx| match &error {
             Some(message) => window.push_notification(
                 Notification::warning(message.clone()).title(tr!("header.update_failed")),
                 cx,
             ),
-            None => window.dispatch_action(Box::new(RefreshRates), cx),
+            None if !updating => window.dispatch_action(Box::new(RefreshRates), cx),
+            None => {}
         })
 }

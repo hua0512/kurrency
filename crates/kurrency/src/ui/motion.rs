@@ -46,6 +46,8 @@ pub(crate) const RESIZE: Duration = Duration::from_millis(200);
 pub(crate) const COPIED: Duration = Duration::from_millis(1200);
 /// Rows moving apart while a row is dragged, and a moved row settling.
 pub(crate) const SPRING: Duration = Duration::from_millis(240);
+/// Invalid-expression shake on the anchor card.
+pub(crate) const SHAKE: Duration = Duration::from_millis(220);
 
 /// How far a rolling digit travels, as a share of the text size.
 const ROLL_TRAVEL: f32 = 0.45;
@@ -295,6 +297,8 @@ pub(crate) struct Motion {
     /// Rows sliding into their new place after a reorder: each code with
     /// the vertical offset (px) it starts from.
     pub settle: Option<(Vec<(String, f32)>, usize)>,
+    /// Invalid-expression shake version on the anchor card.
+    pub shake: Option<usize>,
 }
 
 impl Motion {
@@ -347,6 +351,9 @@ impl Motion {
         }
         if self.settle.as_ref().is_some_and(|(_, v)| *v == version) {
             self.settle = None;
+        }
+        if self.shake == Some(version) {
+            self.shake = None;
         }
     }
 
@@ -486,6 +493,19 @@ pub(crate) fn fade_in(el: impl IntoElement, id: impl Into<ElementId>) -> AnyElem
             Animation::new(FADE).with_easing(ease_out_quint()),
             gpui_kit::Styled::opacity,
         )
+        .into_any_element()
+}
+
+/// A subtle damped horizontal shake for an invalid expression (DESIGN §4).
+pub(crate) fn shake(el: impl IntoElement, id: impl Into<ElementId>) -> AnyElement {
+    div()
+        .relative()
+        .child(el)
+        .with_animation(id, Animation::new(SHAKE), |el, t| {
+            let decay = 1. - t;
+            let dx = (t * std::f32::consts::TAU * 2.5).sin() * 5. * decay * decay;
+            el.left(px(dx))
+        })
         .into_any_element()
 }
 

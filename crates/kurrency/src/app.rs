@@ -105,8 +105,11 @@ pub(crate) struct KurrencyApp {
     /// Saves the window's frame a moment after it stops moving.
     _save_bounds: Option<Task<()>>,
     pub(crate) motion: ui::motion::Motion,
-    /// The undo toast on screen.
+    /// The undo or clipboard-hint toast on screen.
     pub(crate) toast: Option<ui::toast::Toast>,
+    /// The last clipboard text we prompted for, so returning to the window
+    /// never repeats a dismissed or applied suggestion.
+    last_clipboard_hint: Option<String>,
     /// A debug theme override (`KURRENCY_THEME`), which stops system sync.
     forced_theme: bool,
     /// `KURRENCY_DRAG` (debug builds): the lifted row, drawn without a real
@@ -118,6 +121,12 @@ pub(crate) struct KurrencyApp {
     /// Re-renders the relative age and re-checks staleness every minute.
     _ticker: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
+}
+
+/// What the unified TitleBar renders for the active subpage.
+pub(crate) enum HeaderPage<'a> {
+    Detail(&'a Entity<ui::detail::DetailView>),
+    Settings,
 }
 
 /// A full-window page over the list.
@@ -140,6 +149,8 @@ struct Page {
     /// The row a history page was opened from, focused again on close.
     from_row: Option<String>,
     _subscription: Subscription,
+    /// Keeps the unified TitleBar in sync with a page's title and spinner.
+    _observe: Option<Subscription>,
 }
 
 impl KurrencyApp {
@@ -158,6 +169,12 @@ impl KurrencyApp {
         rates.update(cx, |rates, cx| rates.configure(source, every, cx));
         this._subscriptions
             .push(cx.observe_window_bounds(window, KurrencyApp::window_moved));
+        this._subscriptions
+            .push(cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.check_clipboard_hint(window, cx);
+                }
+            }));
         let app = cx.weak_entity();
         window.on_window_should_close(cx, move |window, cx| {
             let _ = app.update(cx, |this, _| this.remember_bounds(window));
@@ -252,6 +269,7 @@ impl KurrencyApp {
             _save_bounds: None,
             motion: Default::default(),
             toast: None,
+            last_clipboard_hint: None,
             forced_theme: false,
             debug_lifted: None,
             #[cfg(debug_assertions)]
@@ -277,6 +295,13 @@ impl KurrencyApp {
             .read(cx)
             .focus_handle(cx)
             .is_focused(window)
+    }
+
+    pub(crate) fn header_page(&self) -> Option<HeaderPage<'_>> {
+        match self.page.as_ref().map(|p| &p.view)? {
+            PageView::Detail(view) => Some(HeaderPage::Detail(view)),
+            PageView::Settings(_) => Some(HeaderPage::Settings),
+        }
     }
 }
 

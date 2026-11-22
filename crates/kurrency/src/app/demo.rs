@@ -376,12 +376,11 @@ impl KurrencyApp {
                 point(width / 2., list_top + (n - 1.) * ROW + ROW / 2.)
             }
             Chart(x) => {
-                // The history page under the header: its own 48px header,
-                // 16px of padding, the hero (84px) and a 16px gap. At the
-                // window's natural height the chart shrinks to about 55px.
-                let top = HEADER + 48. + 16. + 84. + 16.;
+                // The history page sits directly under the unified TitleBar:
+                // 12px top padding, the hero (72px) and a 12px gap.
+                let top = HEADER + 12. + 72. + 12.;
                 let (left, right) = (PAD_X, width - PAD_X);
-                point(left + (right - left) * x, top + 26.)
+                point(left + (right - left) * x, top + 36.)
             }
             Away => AWAY,
         }

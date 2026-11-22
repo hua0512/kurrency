@@ -64,6 +64,42 @@ impl KurrencyApp {
         cx.notify();
     }
 
+    /// Selects `code` as the anchor currency (adding it if missing) while
+    /// keeping the equivalent value, in a single undo step.
+    pub(crate) fn select_anchor(
+        &mut self,
+        code: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.anchor() == Some(code) {
+            return;
+        }
+        self.batch(window, cx, |this, window, cx| {
+            if !this.rows.iter().any(|row| row.code == code) {
+                this.rows.push(Row {
+                    code: code.to_string(),
+                    focus_handle: cx.focus_handle(),
+                });
+            }
+            if let Some(ix) = this.rows.iter().position(|row| row.code == code) {
+                this.promote(ix, window, cx);
+            }
+        });
+        cx.notify();
+    }
+
+    /// Plays a brief horizontal shake on the anchor card when an invalid
+    /// expression is committed.
+    pub(crate) fn trigger_shake(&mut self, cx: &mut Context<Self>) {
+        if cx.reduce_motion() {
+            return;
+        }
+        let version = self.motion.bump();
+        self.motion.shake = Some(version);
+        self.expire_motion(version, ui::motion::SHAKE, cx);
+    }
+
     pub(crate) fn add_currency(&mut self, code: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.rows.iter().any(|row| row.code == code) {
             return;
@@ -125,13 +161,30 @@ impl KurrencyApp {
 
     /// "EUR removed · Undo", at the bottom of the window.
     fn toast_removed(&mut self, code: &str, _window: &mut Window, cx: &mut Context<Self>) {
+        self.show_toast(
+            tr!("toast.removed", code = code),
+            ui::toast::ToastAction::Undo,
+            ui::toast::SHOW_FOR,
+            cx,
+        );
+    }
+
+    /// Shows a bottom toast for `duration`, cancelling any earlier toast's timer.
+    pub(super) fn show_toast(
+        &mut self,
+        message: String,
+        action: ui::toast::ToastAction,
+        duration: Duration,
+        cx: &mut Context<Self>,
+    ) {
         let version = self.motion.bump();
         self.toast = Some(ui::toast::Toast {
-            message: tr!("toast.removed", code = code).into(),
+            message: message.into(),
+            action,
             version,
         });
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(ui::toast::SHOW_FOR).await;
+            cx.background_executor().timer(duration).await;
             let _ = this.update(cx, |this, cx| {
                 if this.toast.as_ref().is_some_and(|t| t.version == version) {
                     this.toast = None;

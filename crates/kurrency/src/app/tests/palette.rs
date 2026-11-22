@@ -192,10 +192,19 @@ fn palette_commands(cx: &mut TestAppContext) {
     assert_eq!(amount(&app, cx), Some(d("50")));
     cx.update(|window, cx| assert!(!window.has_active_dialog(cx)));
 
-    // A plain query toggles the currency it finds.
+    // A plain query for a listed currency switches it into the anchor instead
+    // of deleting it; `-eur` removes it explicitly.
     cx.simulate_keystrokes(&keys("ctrl-k"));
     draw(cx);
     cx.simulate_input("euro");
+    draw(cx);
+    cx.simulate_keystrokes("enter");
+    draw(cx);
+    assert_eq!(codes(&app, cx), ["EUR", "JPY", "USD"]);
+
+    cx.simulate_keystrokes(&keys("ctrl-k"));
+    draw(cx);
+    cx.simulate_input("-eur");
     draw(cx);
     cx.simulate_keystrokes("enter");
     draw(cx);

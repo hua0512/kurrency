@@ -121,6 +121,37 @@ pub fn label_in(command: &Command, style: money::NumberStyle) -> String {
     }
 }
 
+/// Widely used currencies surfaced at the top of an empty palette search.
+const POPULAR_CURRENCIES: &[&str] = &[
+    "USD", "EUR", "JPY", "GBP", "CNY", "HKD", "CHF", "CAD", "AUD", "SGD", "KRW", "TWD", "INR",
+    "MXN", "BRL", "SEK", "NOK", "NZD", "THB", "MYR",
+];
+
+/// Orders `codes` for an empty palette search: currencies already in the
+/// user's list first (in list order), then popular currencies, then the rest
+/// in their original order.
+pub fn order_for_palette(codes: &[String], listed: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(codes.len());
+    for code in listed {
+        if codes.iter().any(|c| c == code) && !out.contains(code) {
+            out.push(code.clone());
+        }
+    }
+    for &code in POPULAR_CURRENCIES {
+        if let Some(found) = codes.iter().find(|c| c.as_str() == code)
+            && !out.contains(found)
+        {
+            out.push(found.clone());
+        }
+    }
+    for code in codes {
+        if !out.contains(code) {
+            out.push(code.clone());
+        }
+    }
+    out
+}
+
 /// The codes matching `term`, best first: the exact code, codes starting
 /// with it, names with a word starting with it, then names containing it.
 /// Chinese names count as names. Ties keep the order of `codes`.
