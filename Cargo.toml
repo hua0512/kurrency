@@ -1,5 +1,8 @@
 [workspace]
 members = ["crates/*"]
+# Patched third-party crates (vendor/README.md): dependencies, not members, so
+# the workspace lints and `cargo clippy --workspace` leave them alone.
+exclude = ["vendor"]
 resolver = "3"
 
 [workspace.package]
@@ -20,7 +23,7 @@ kurrency-core = { path = "crates/kurrency-core" }
 
 # gpui-kit and the gpui-pre snapshot crates are pinned exactly (see
 # docs/DEVELOPMENT.md); only `crates/kurrency` may depend on them.
-gpui-kit = "=0.9.0"
+gpui-kit = "=0.11.0"
 
 anyhow = "1.0.104"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
@@ -41,6 +44,12 @@ serde_json = "1.0.154"
 sys-locale = "0.3.2"
 ttf-parser = "0.25.1"
 ureq = { version = "3.5.1", default-features = false, features = ["rustls", "platform-verifier", "gzip"] }
+
+# gpui-pre-windows with the live-resize fix (vendor/README.md): the same
+# version as the one gpui-pre pins, so drop or re-vendor it with each gpui-kit
+# bump.
+[patch.crates-io]
+gpui-pre-windows = { path = "vendor/gpui-pre-windows" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

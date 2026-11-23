@@ -79,6 +79,8 @@ locales/              UI strings (en, zh-CN), for both crates
 packaging/            icons, desktop entry, metainfo, Windows resources
 scripts/              generators (icons, CLDR names, font subsets), tarball,
                       README screenshots and demo (record-demo.sh, demo-fixture/)
+vendor/               patched third-party crates, not workspace members
+                      (vendor/README.md)
 ```
 
 Only `crates/kurrency` may depend on gpui-kit; CI checks that
@@ -141,7 +143,8 @@ relink.
 Third-party actions are pinned to commit SHAs, and Dependabot proposes updates
 for them and for crates weekly. gpui-kit and the `gpui-pre` crates are pinned
 exactly (`=`), so Dependabot leaves them alone: bump them together by hand
-when gpui-kit releases.
+when gpui-kit releases, and drop or re-vendor the patched gpui-pre-windows in
+`vendor/` at the same time (see [vendor/README.md](../vendor/README.md)).
 
 ## Packaging and releases
 

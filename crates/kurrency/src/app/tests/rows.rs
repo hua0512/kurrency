@@ -2,6 +2,7 @@
 //! removing, fitting the window, and the motion states.
 
 use super::*;
+use crate::ui::motion::Roll;
 
 #[gpui_kit::test]
 fn rows_promote_into_the_anchor(cx: &mut TestAppContext) {
@@ -334,4 +335,28 @@ fn resize_burst_debounces_into_one_saved_frame(cx: &mut TestAppContext) {
         .expect("saved window bounds");
     assert_eq!(saved.width, 360. + 9. * 12.);
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[gpui_kit::test]
+fn amounts_keep_their_place_when_a_roll_starts_and_ends(cx: &mut TestAppContext) {
+    // At rest an amount is drawn by one element (ui/digits.rs), mid-roll by one
+    // element per character: both must lay the characters out alike.
+    let (app, cx) = open_app(cx, None);
+    settle(cx);
+    let bounds = |cx: &mut VisualTestContext| {
+        ["amount-USD", "amount-EUR", "amount-JPY"].map(|amount| cx.debug_bounds(amount).unwrap())
+    };
+    let rolling = |app: &Entity<KurrencyApp>, cx: &mut VisualTestContext| {
+        app.read_with(cx, |app, _| {
+            ["anchor", "EUR", "JPY"].map(|key| app.motion.roll(key).is_some_and(Roll::rolling))
+        })
+    };
+
+    cx.update(|window, cx| app.update(cx, |app, cx| app.set_amount(d("123"), window, cx)));
+    draw(cx);
+    assert_eq!(rolling(&app, cx), [true; 3]);
+    let mid_roll = bounds(cx);
+    settle(cx);
+    assert_eq!(rolling(&app, cx), [false; 3]);
+    assert_eq!(bounds(cx), mid_roll);
 }

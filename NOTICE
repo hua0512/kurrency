@@ -8,6 +8,9 @@ Kurrency bundles the following third-party material.
 - Noto Sans SC 2.004, subset (assets/fonts/NotoSansSC-*.subset.otf):
   SIL Open Font License 1.1, see assets/fonts/NotoSansSC-OFL.txt.
 - flag-icons (assets/flags/): MIT, see assets/flags/LICENSE.
+- gpui-pre-windows 0.3.14 (vendor/gpui-pre-windows/), Zed's GPUI Windows
+  platform, modified as described in vendor/README.md: Apache License 2.0,
+  see vendor/gpui-pre-windows/LICENSE-APACHE.
 - An exchange-rate snapshot (assets/rates-snapshot.json) from the
   Frankfurter API (https://frankfurter.dev): reference rates published by
   the European Central Bank and other central banks.
