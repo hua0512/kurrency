@@ -25,6 +25,10 @@ inputs:
     description: Swatinem/rust-cache shared-key (required when cache is true)
     required: false
     default: ""
+  cache-all-crates:
+    description: Keep extracted ~/.cargo/registry/src in cache (avoids slow NTFS re-extraction on Windows)
+    required: false
+    default: "false"
 
 outputs:
   cache-hit:
@@ -90,6 +94,7 @@ runs:
       uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       with:
         shared-key: ${{ inputs.shared-key }}
+        cache-all-crates: ${{ inputs.cache-all-crates }}
         cache-bin: false
         save-if: ${{ github.ref == 'refs/heads/main' }}
 

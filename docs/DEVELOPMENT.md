@@ -125,9 +125,13 @@ Toolchain setup and caching live in `.github/actions/setup-rust`. Pinned jobs
 use an isolated `RUSTUP_HOME` (so runner-image updates to the pre-installed
 `stable` toolchain never invalidate caches) and install only the components
 they need. Caching uses [rust-cache](https://github.com/Swatinem/rust-cache)
-with `cache-bin: false`; on an exact cache hit it restores the sparse index's
-`config.json` and sets `CARGO_NET_OFFLINE=true` so Cargo skips re-validating
-crates.io over the network. Only `main` saves caches; pull requests restore
+with `cache-bin: false` (and `cache-all-crates: true` on Windows so Cargo does
+not re-extract ~550 `.crate` archives onto NTFS on every warm run); on an exact
+cache hit it restores the sparse index's `config.json`, sets
+`CARGO_NET_OFFLINE=true` so Cargo skips re-validating crates.io over the
+network, and lets the Linux clippy jobs skip `apt-get` because clippy emits
+metadata without linking the binary. Only `main` saves caches; pull requests
+restore
 `main`'s, so they never push `main`'s entries out of GitHub's 10 GB quota. A
 new push to a pull request cancels its running checks. sccache is not used:
 rust-cache already restores every dependency in one archive, while sccache

@@ -40,7 +40,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
           components: rustfmt,clippy
           cache: "true"
@@ -66,7 +67,10 @@ jobs:
             echo "::error file=crates/kurrency-core/Cargo.toml::kurrency-core depends on GPUI (above); only crates/kurrency may."
             exit 1
           fi
+      # Clippy emits metadata without linking the final binary, so system
+      # headers/pkg-config are only needed when -sys crates build on a cache miss.
       - name: Install system libraries
+        if: steps.rust.outputs.cache-hit != 'true'
         run: .github/scripts/install-linux-deps.sh
       # `--profile ci` inherits `dev` while dropping debug info from dependency
       # proc-macros and build scripts, keeping the clippy cache smaller and
@@ -87,10 +91,13 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # On Windows, keep extracted ~/.cargo/registry/src in cache so Cargo does
+      # not re-extract ~550 .crate archives onto NTFS on every warm run.
       - uses: ./.github/actions/setup-rust
         with:
           cache: "true"
-          shared-key: test
+          cache-all-crates: ${{ runner.os == 'Windows' }}
+          shared-key: ${{ runner.os == 'Windows' && 'test-src' || 'test' }}
       - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-nextest
@@ -128,7 +135,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-rust
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
           toolchain: stable
           components: clippy
@@ -143,6 +151,7 @@ jobs:
             echo "::warning file=rust-toolchain.toml::Rust $stable is out; the toolchain is pinned to $pinned. Bump rust-toolchain.toml and rust-version (docs/RELEASING.md)."
           fi
       - name: Install system libraries
+        if: steps.rust.outputs.cache-hit != 'true'
         run: .github/scripts/install-linux-deps.sh
       - name: Clippy
         run: cargo clippy --workspace --all-targets --profile ci --locked -- -D warnings
