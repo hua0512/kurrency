@@ -19,14 +19,6 @@ pub(crate) fn inert(child: impl IntoElement) -> Inert {
     Inert(child.into_any_element())
 }
 
-impl IntoElement for Inert {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
 impl Element for Inert {
     type RequestLayoutState = ();
     type PrepaintState = ();
