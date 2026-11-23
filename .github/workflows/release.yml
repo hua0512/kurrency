@@ -31,8 +31,43 @@ env:
 # and `cargo packager --profile dist` reads them from there.
 
 jobs:
+  # Fast pre-flight gate before spinning up 5 clean fat-LTO release builds:
+  # catches mismatched tag / Cargo.toml / AppStream metainfo versions in seconds.
+  verify:
+    name: Verify release metadata
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check Cargo.toml, tag, and metainfo versions
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ -z "$version" ]; then
+            echo "::error file=Cargo.toml::Could not read workspace version"
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [ "$tag_version" != "$version" ]; then
+              echo "::error file=Cargo.toml::Tag $GITHUB_REF_NAME does not match Cargo.toml version $version."
+              exit 1
+            fi
+          fi
+          python3 - "$version" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          expected = sys.argv[1]
+          path = "packaging/linux/dev.kurrency.Kurrency.metainfo.xml"
+          tree = ET.parse(path)
+          release = tree.find("./releases/release")
+          if release is None or release.get("version") != expected:
+              got = release.get("version") if release is not None else "<missing>"
+              print(f"::error file={path}::Latest <release> version is {got}, expected {expected}.")
+              sys.exit(1)
+          PY
+
   linux:
     name: Linux (${{ matrix.arch }})
+    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -49,13 +84,12 @@ jobs:
       TARGET: ${{ matrix.arch }}-unknown-linux-gnu
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned toolchain
-        run: |
-          rustup toolchain install
-          rustup target add "$TARGET"
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ env.TARGET }}
       - name: Install system libraries
         run: .github/scripts/install-linux-deps.sh
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
       - name: Build
@@ -79,21 +113,55 @@ jobs:
           rm -rf squashfs-root
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-${{ matrix.arch }}
+          name: release-linux-${{ matrix.arch }}
           path: |
             dist/*.deb
             dist/*.AppImage
             dist/*.tar.gz
           if-no-files-found: error
 
-  macos:
-    name: macOS (universal)
+  # Build both macOS architectures in parallel (~6-7 min instead of ~12 min
+  # serially on one runner), then join, sign and package in `macos-package`.
+  macos-build:
+    name: macOS build (${{ matrix.arch }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            target: aarch64-apple-darwin
+          - arch: x86_64
+            target: x86_64-apple-darwin
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
       # The x86_64 slice's minimum; keep it equal to `minimum-system-version`
       # in crates/kurrency/Cargo.toml (rustc's aarch64 default is already 11.0).
       MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build (${{ matrix.arch }})
+        run: cargo build --profile dist --locked --target "${{ matrix.target }}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-bin-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/dist/kurrency
+          retention-days: 1
+          if-no-files-found: error
+
+  macos-package:
+    name: macOS (universal)
+    needs: macos-build
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      # Packaging does not compile Rust; use the runner's pre-installed stable
+      # cargo proxy so rustup does not download the pinned toolchain here.
+      RUSTUP_TOOLCHAIN: stable
       # Signing and notarisation run only when these secrets exist; otherwise
       # the .app and .dmg are unsigned. GitHub cannot test secrets in `if:`,
       # so they are read through the environment.
@@ -105,25 +173,27 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned toolchain
-        run: |
-          rustup toolchain install
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-bin-aarch64
+          path: target/aarch64-apple-darwin/dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-bin-x86_64
+          path: target/x86_64-apple-darwin/dist
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
-      - name: Build (aarch64)
-        run: cargo build --profile dist --locked --target aarch64-apple-darwin
-      - name: Build (x86_64)
-        run: cargo build --profile dist --locked --target x86_64-apple-darwin
       # cargo-packager reads `--target universal-apple-darwin --profile dist`
       # binaries from target/universal-apple-darwin/dist.
       - name: Make the universal binary
         run: |
+          chmod +x target/aarch64-apple-darwin/dist/kurrency target/x86_64-apple-darwin/dist/kurrency
           mkdir -p target/universal-apple-darwin/dist
           lipo -create -output target/universal-apple-darwin/dist/kurrency \
             target/aarch64-apple-darwin/dist/kurrency \
             target/x86_64-apple-darwin/dist/kurrency
+          chmod +x target/universal-apple-darwin/dist/kurrency
           lipo -info target/universal-apple-darwin/dist/kurrency
       - name: Configure signing
         if: env.APPLE_SIGNING_IDENTITY != ''
@@ -147,12 +217,13 @@ jobs:
           codesign --verify --deep --strict --verbose=2 dist/Kurrency.app || echo "::notice::Kurrency.app is unsigned"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: macos-universal
+          name: release-macos-universal
           path: dist/*.dmg
           if-no-files-found: error
 
   windows:
     name: Windows (x86_64)
+    needs: verify
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -165,11 +236,10 @@ jobs:
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the pinned toolchain
-        run: |
-          rustup toolchain install
-          rustup target add "$TARGET"
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ env.TARGET }}
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with:
           tool: cargo-packager@${{ env.CARGO_PACKAGER_VERSION }}
       - name: Build
@@ -199,7 +269,7 @@ jobs:
           ls -la dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-x86_64
+          name: release-windows-x86_64
           path: |
             dist/*-setup.exe
             dist/*.zip
@@ -207,7 +277,7 @@ jobs:
 
   release:
     name: Draft the GitHub Release
-    needs: [linux, macos, windows]
+    needs: [linux, macos-package, windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -216,6 +286,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          pattern: release-*
           path: dist
           merge-multiple: true
       - name: Checksums

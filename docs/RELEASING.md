@@ -17,9 +17,9 @@ them to a **draft** GitHub Release, which you check and publish by hand.
    git push origin v0.2.0
    ```
 
-4. When the workflow finishes (about 15 to 25 minutes; the macOS job builds two
-   architectures), open the draft on the Releases page, edit the generated
-   notes, check the artifacts, and publish.
+4. When the workflow finishes (about 10 minutes; the two macOS architectures
+   build in parallel before `lipo` joins them), open the draft on the Releases
+   page, edit the generated notes, check the artifacts, and publish.
 
 To try the packaging without a release, run the workflow from the Actions tab
 (**Release**, then **Run workflow**). It builds every package as a workflow
@@ -143,5 +143,5 @@ measurements:
 ## Before the first release
 
 - If branch protection requires the CI checks, note that CI skips commits that
-  only touch Markdown, `LICENSE`, `assets/screenshots/`;
+  only touch Markdown, `LICENSE`, `NOTICE`, `assets/screenshots/`;
   mark the checks as not required for those, or drop `paths-ignore`.

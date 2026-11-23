@@ -104,27 +104,35 @@ integration tests, because they read the view's private state.
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on pushes to `main` and on pull requests,
-except for changes that only touch Markdown, `LICENSE` or
-`assets/screenshots/`.
+except for changes that only touch Markdown, `LICENSE`, `NOTICE` or
+`assets/screenshots/`. All jobs run in parallel so wall-clock time is bounded
+by the slowest job:
 
-1. **Lint** (Ubuntu): `cargo fmt --check`, a check that `kurrency-core`'s
-   dependency graph has no GPUI crate (`cargo tree`, nothing compiled), then
-   `cargo clippy --workspace --all-targets -- -D warnings`.
-2. **Test** (Ubuntu, macOS arm64, Windows), after Lint passes:
+1. **Lint** (Ubuntu): `cargo fmt --check`, a check that `rust-version` matches
+   `rust-toolchain.toml`, a check that `kurrency-core`'s dependency graph has
+   no GPUI crate (`cargo tree`, nothing compiled), then
+   `cargo clippy --workspace --all-targets --profile ci -- -D warnings`.
+2. **Test** (Ubuntu, macOS arm64, Windows):
    `cargo nextest run --workspace --cargo-profile ci --profile ci`, then the
-   core's doctests. `[profile.ci]` in the root
-   `Cargo.toml` drops debug info from dependencies. On Linux the
-   [mold](https://github.com/rui314/mold) linker is set up by the workflow, not
-   by the repository, so local builds keep their own linker.
+   core's doctests. `[profile.ci]` in the root `Cargo.toml` drops debug info
+   from dependencies. Fast linkers — [mold](https://github.com/rui314/mold) on
+   Linux and `lld-link` on Windows — are set up by the workflow, not by the
+   repository, so local builds keep their own linker.
 3. **Clippy (latest stable)**: non-blocking. It shows new lints early, and warns
    when `rust-toolchain.toml` is behind the newest stable.
 
-Caching uses [rust-cache](https://github.com/Swatinem/rust-cache). Only `main`
-saves caches; pull requests restore `main`'s, so they never push `main`'s
-entries out of GitHub's 10 GB quota. A new push to a pull request cancels its
-running checks. sccache is not used: rust-cache already restores every
-dependency in one archive, while sccache would fetch about 570 objects
-one by one from the cache service and still relink.
+Toolchain setup and caching live in `.github/actions/setup-rust`. Pinned jobs
+use an isolated `RUSTUP_HOME` (so runner-image updates to the pre-installed
+`stable` toolchain never invalidate caches) and install only the components
+they need. Caching uses [rust-cache](https://github.com/Swatinem/rust-cache)
+with `cache-bin: false`; on an exact cache hit it restores the sparse index's
+`config.json` and sets `CARGO_NET_OFFLINE=true` so Cargo skips re-validating
+crates.io over the network. Only `main` saves caches; pull requests restore
+`main`'s, so they never push `main`'s entries out of GitHub's 10 GB quota. A
+new push to a pull request cancels its running checks. sccache is not used:
+rust-cache already restores every dependency in one archive, while sccache
+would fetch about 570 objects one by one from the cache service and still
+relink.
 
 Third-party actions are pinned to commit SHAs, and Dependabot proposes updates
 for them and for crates weekly. gpui-kit and the `gpui-pre` crates are pinned

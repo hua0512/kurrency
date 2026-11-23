@@ -35,13 +35,20 @@ fn main() {
         .expect("the crate is crates/kurrency in the repository");
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR");
     let out_dir = Path::new(&out_dir);
-    flags(&root.join("assets").join("flags"), out_dir);
-    fonts(&root.join("assets").join("fonts"), out_dir);
+    // Unoptimised dev/ci builds run build.rs with opt-level 0 too; fast
+    // compression keeps those rebuilds quick while release/dist keep best.
+    let compression = if env::var("OPT_LEVEL").as_deref() == Ok("0") {
+        Compression::fast()
+    } else {
+        Compression::best()
+    };
+    flags(&root.join("assets").join("flags"), out_dir, compression);
+    fonts(&root.join("assets").join("fonts"), out_dir, compression);
     windows_resources(root);
 }
 
 /// Writes `OUT_DIR/flags.rs`, the table of `OUT_DIR/flags/<region>.svgz`.
-fn flags(flags_dir: &Path, out_dir: &Path) {
+fn flags(flags_dir: &Path, out_dir: &Path, compression: Compression) {
     println!("cargo:rerun-if-changed={}", flags_dir.display());
     let svgz_dir = out_dir.join("flags");
     fs::create_dir_all(&svgz_dir).expect("OUT_DIR/flags");
@@ -63,7 +70,7 @@ fn flags(flags_dir: &Path, out_dir: &Path) {
         let svg = fs::read(flags_dir.join(format!("{region}.svg"))).expect("a flag");
         // flate2 writes a zero time into the gzip header, so the bytes only
         // depend on the SVG.
-        let mut gz = GzEncoder::new(Vec::new(), Compression::best());
+        let mut gz = GzEncoder::new(Vec::new(), compression);
         gz.write_all(&svg).expect("gzip a flag");
         let path = svgz_dir.join(format!("{region}.svgz"));
         fs::write(&path, gz.finish().expect("gzip a flag")).expect("write a .svgz");
@@ -79,12 +86,12 @@ fn flags(flags_dir: &Path, out_dir: &Path) {
 }
 
 /// Writes each of [`FONTS`] raw-deflated to `OUT_DIR/<name>.deflate`.
-fn fonts(fonts_dir: &Path, out_dir: &Path) {
+fn fonts(fonts_dir: &Path, out_dir: &Path, compression: Compression) {
     for name in FONTS {
         let path = fonts_dir.join(name);
         println!("cargo:rerun-if-changed={}", path.display());
         let font = fs::read(&path).expect("a bundled font");
-        let mut deflate = DeflateEncoder::new(Vec::new(), Compression::best());
+        let mut deflate = DeflateEncoder::new(Vec::new(), compression);
         deflate.write_all(&font).expect("deflate a font");
         let data = deflate.finish().expect("deflate a font");
         fs::write(out_dir.join(format!("{name}.deflate")), data).expect("write a font");

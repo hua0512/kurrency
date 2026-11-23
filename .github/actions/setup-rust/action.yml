@@ -1,0 +1,119 @@
+name: Set up Rust
+description: >-
+  Installs the pinned (or latest stable) Rust toolchain with only the requested
+  components, optionally restores Swatinem/rust-cache, and enables offline mode
+  on exact cache hits.
+
+inputs:
+  toolchain:
+    description: "'pinned' (from rust-toolchain.toml) or 'stable'"
+    required: false
+    default: pinned
+  components:
+    description: Comma-separated rustup components to install (e.g. 'rustfmt,clippy')
+    required: false
+    default: ""
+  targets:
+    description: Space-separated target triples to install
+    required: false
+    default: ""
+  cache:
+    description: Whether to restore and save Swatinem/rust-cache
+    required: false
+    default: "false"
+  shared-key:
+    description: Swatinem/rust-cache shared-key (required when cache is true)
+    required: false
+    default: ""
+
+outputs:
+  cache-hit:
+    description: Whether Swatinem/rust-cache found an exact cache match
+    value: ${{ steps.rust-cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      shell: bash
+      env:
+        INPUT_TOOLCHAIN: ${{ inputs.toolchain }}
+        INPUT_COMPONENTS: ${{ inputs.components }}
+        INPUT_TARGETS: ${{ inputs.targets }}
+      run: |
+        set -euo pipefail
+
+        if [ "$INPUT_TOOLCHAIN" = "pinned" ]; then
+          # Isolate RUSTUP_HOME so the runner image's pre-installed `stable`
+          # toolchain is never seen by Swatinem/rust-cache (which hashes every
+          # installed toolchain into the cache key and would otherwise bust all
+          # caches whenever GitHub updates its runner image).
+          rustup_home="${{ runner.temp }}/rustup"
+          export RUSTUP_HOME="$rustup_home"
+          printf 'RUSTUP_HOME=%s\n' "$rustup_home" >> "$GITHUB_ENV"
+
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "::error file=rust-toolchain.toml::Could not read toolchain channel"
+            exit 1
+          fi
+        else
+          # Reuse the runner image's pre-installed stable toolchain when current.
+          channel="$INPUT_TOOLCHAIN"
+        fi
+
+        args=(toolchain install "$channel" --profile minimal --no-self-update)
+        if [ -n "$INPUT_COMPONENTS" ]; then
+          IFS=',' read -r -a comps <<< "$INPUT_COMPONENTS"
+          for comp in "${comps[@]}"; do
+            [ -n "$comp" ] && args+=(--component "$comp")
+          done
+        fi
+        if [ -n "$INPUT_TARGETS" ]; then
+          read -r -a tgts <<< "$INPUT_TARGETS"
+          for tgt in "${tgts[@]}"; do
+            [ -n "$tgt" ] && args+=(--target "$tgt")
+          done
+        fi
+
+        rustup "${args[@]}"
+        if [ "$INPUT_TOOLCHAIN" = "pinned" ]; then
+          rustup default "$channel"
+        fi
+        # Pinning RUSTUP_TOOLCHAIN stops rustup from auto-downloading
+        # rust-toolchain.toml's extra components (rustfmt, clippy) in jobs that
+        # do not need them.
+        printf 'RUSTUP_TOOLCHAIN=%s\n' "$channel" >> "$GITHUB_ENV"
+
+    - id: rust-cache
+      if: inputs.cache == 'true'
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        shared-key: ${{ inputs.shared-key }}
+        cache-bin: false
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+
+    # Swatinem/rust-cache prunes every file in `~/.cargo/registry/index` whose
+    # name is not a crate in Cargo.lock, which deletes the sparse index's
+    # `config.json`. Without it (and without offline mode), Cargo re-validates
+    # all 570+ sparse index entries over HTTP on every warm run (up to 20s on
+    # Windows and 9s on macOS). On an exact cache hit, every lockfile crate and
+    # compiled artifact is already local, so restoring `config.json` and setting
+    # CARGO_NET_OFFLINE=true skips the network completely.
+    - name: Enable Cargo offline mode on exact cache hit
+      if: inputs.cache == 'true' && steps.rust-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+        restored=false
+        for dir in "$cargo_home"/registry/index/index.crates.io-*; do
+          [ -d "$dir" ] || continue
+          if [ ! -f "$dir/config.json" ]; then
+            printf '{"dl":"https://static.crates.io/crates","api":"https://crates.io"}\n' > "$dir/config.json"
+          fi
+          restored=true
+        done
+        if [ "$restored" = true ]; then
+          echo "CARGO_NET_OFFLINE=true" >> "$GITHUB_ENV"
+        fi
