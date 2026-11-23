@@ -2,6 +2,7 @@
 
 pub(crate) mod anchor;
 pub(crate) mod detail;
+pub(crate) mod digits;
 pub(crate) mod flag;
 pub(crate) mod header;
 pub(crate) mod inert;

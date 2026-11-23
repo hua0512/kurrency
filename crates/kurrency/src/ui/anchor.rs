@@ -25,6 +25,7 @@ use rust_decimal::Decimal;
 use crate::app::{ANCHOR_CONTEXT, KurrencyApp, SwapAnchor};
 use crate::assets;
 use crate::layout::metrics;
+use crate::ui::digits::digits;
 use crate::ui::flag::flag;
 use crate::ui::motion::{self, Roll};
 use crate::ui::picker::{self, PickerMode};
@@ -84,11 +85,21 @@ fn amount_parts_text(
     roll: Option<&Roll>,
 ) -> AnyElement {
     let int_len = parts.integer.chars().count();
-    let chars = |text: &str, offset: usize| {
-        text.chars()
-            .enumerate()
-            .map(|(ix, ch)| motion::roll_char(ch, offset + ix, roll, size))
-            .collect::<Vec<_>>()
+    // At rest, each part is one element (`digits`); a roll needs one per
+    // character. Both lay the characters out alike, so nothing moves when a
+    // roll starts or ends.
+    let roll = roll.filter(|roll| roll.rolling());
+    let chars = |text: &str, offset: usize| -> AnyElement {
+        match roll {
+            None => digits(text).into_any_element(),
+            Some(_) => h_flex()
+                .children(
+                    text.chars()
+                        .enumerate()
+                        .map(|(ix, ch)| motion::roll_char(ch, offset + ix, roll, size)),
+                )
+                .into_any_element(),
+        }
     };
     let selector = format!("amount-{code}");
     h_flex()
@@ -109,12 +120,12 @@ fn amount_parts_text(
         .child(
             h_flex()
                 .relative()
-                .child(h_flex().children(chars(&parts.integer, 0)))
+                .child(chars(&parts.integer, 0))
                 .when(!parts.fraction.is_empty(), |el| {
                     el.child(
                         h_flex()
                             .opacity(decimals)
-                            .children(chars(&parts.fraction, int_len)),
+                            .child(chars(&parts.fraction, int_len)),
                     )
                 })
                 .children(motion::roll_exits(roll, size, decimals)),
