@@ -3214,8 +3214,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-windows"
 version = "0.3.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8badbaa4129a88e4d2fdaa1615fc61b2a59d4ebb2ac36e5de51f75598f0dd992"
 dependencies = [
  "accesskit",
  "accesskit_windows",
