@@ -85,19 +85,19 @@ pub fn echo_text(value: Decimal, dp: u32, style: money::NumberStyle) -> String {
 }
 
 /// The daily change of a row: units of the row's currency per anchor unit,
-/// today against the previous day.
+/// today against the previous trading day.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Change {
-    /// The rate rose by this many percent (rounded to one decimal, > 0).
+    /// The rate rose by this many percent (rounded to two decimals, > 0).
     Up(Decimal),
-    /// The rate fell by this many percent (rounded to one decimal, > 0).
+    /// The rate fell by this many percent (rounded to two decimals, > 0).
     Down(Decimal),
-    /// Unchanged at one decimal, or no data for the previous day.
+    /// Unchanged at two decimals, or no data for the previous day.
     Flat,
 }
 
 impl Change {
-    /// Compares today's rate with the previous day's.
+    /// Compares today's rate with the previous trading day's.
     pub fn between(today: Option<Decimal>, previous: Option<Decimal>) -> Self {
         let (Some(today), Some(previous)) = (today, previous) else {
             return Self::Flat;
@@ -112,7 +112,7 @@ impl Change {
         else {
             return Self::Flat;
         };
-        let rounded = money::round_to(pct, 1);
+        let rounded = money::round_to(pct, 2);
         if rounded.is_zero() {
             Self::Flat
         } else if rounded.is_sign_positive() {
@@ -122,19 +122,20 @@ impl Change {
         }
     }
 
-    /// `▴ 0.1%`, `▾ 0.3%`, or `·`.
+    /// `▴ 0.02%`, `▾ 0.30%`, `▴ 12.5%`, or `·`.
     pub fn label(self) -> String {
         match self {
-            Self::Up(pct) => format!("▴ {}%", one_decimal(pct)),
-            Self::Down(pct) => format!("▾ {}%", one_decimal(pct)),
+            Self::Up(pct) => format!("▴ {}%", format_pct(pct)),
+            Self::Down(pct) => format!("▾ {}%", format_pct(pct)),
             Self::Flat => "·".to_string(),
         }
     }
 }
 
-fn one_decimal(pct: Decimal) -> String {
-    let mut pct = pct;
-    pct.rescale(1);
+fn format_pct(pct: Decimal) -> String {
+    let dp = if pct >= Decimal::TEN { 1 } else { 2 };
+    let mut pct = money::round_to(pct, dp);
+    pct.rescale(dp);
     pct.to_string()
 }
 
@@ -329,17 +330,29 @@ mod tests {
             Change::between(Some(d("158.32")), Some(d("158.16"))),
             Change::Up(d("0.1"))
         );
-        // Under 0.05% rounds to unchanged.
+        // Subtle 1–4 bps moves on managed/major pairs stay visible at two decimals.
         assert_eq!(
-            Change::between(Some(d("7.1240")), Some(d("7.1238"))),
+            Change::between(Some(d("6.6695")), Some(d("6.6681"))),
+            Change::Up(d("0.02"))
+        );
+        assert_eq!(
+            Change::between(Some(d("0.91007")), Some(d("0.91016"))),
+            Change::Down(d("0.01"))
+        );
+        // Under 0.005% rounds to unchanged.
+        assert_eq!(
+            Change::between(Some(d("7.12400")), Some(d("7.12398"))),
             Change::Flat
         );
         assert_eq!(Change::between(Some(d("1")), None), Change::Flat);
         assert_eq!(Change::between(None, Some(d("1"))), Change::Flat);
         assert_eq!(Change::between(Some(d("1")), Some(d("0"))), Change::Flat);
-        assert_eq!(Change::Down(d("0.3")).label(), "▾ 0.3%");
-        assert_eq!(Change::Up(d("2")).label(), "▴ 2.0%");
-        assert_eq!(Change::Up(d("12.5")).label(), "▴ 12.5%");
+        assert_eq!(Change::Up(d("0.02")).label(), "▴ 0.02%");
+        assert_eq!(Change::Down(d("0.3")).label(), "▾ 0.30%");
+        assert_eq!(Change::Up(d("2")).label(), "▴ 2.00%");
+        assert_eq!(Change::Up(d("9.99")).label(), "▴ 9.99%");
+        assert_eq!(Change::Up(d("10")).label(), "▴ 10.0%");
+        assert_eq!(Change::Up(d("12.54")).label(), "▴ 12.5%");
         assert_eq!(Change::Flat.label(), "·");
     }
 

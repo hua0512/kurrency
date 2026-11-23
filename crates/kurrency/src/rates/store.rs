@@ -303,15 +303,15 @@ mod tests {
     }
 
     impl Feed {
-        /// Frankfurter's rates dated 2026-11-07, and the previous day's.
+        /// Frankfurter's rates dated Friday 2026-11-06, and Thursday's.
         fn frankfurter(urls: Arc<Mutex<Vec<String>>>) -> Self {
             Self {
                 urls,
                 answer: |url| {
-                    let (date, eur) = if url.contains("date=2026-11-06") {
-                        ("2026-11-06", 0.91)
+                    let (date, eur) = if url.contains("date=2026-11-05") {
+                        ("2026-11-05", 0.91)
                     } else {
-                        ("2026-11-07", 0.9)
+                        ("2026-11-06", 0.9)
                     };
                     let body = format!(
                         r#"[{{"date":"{date}","base":"USD","quote":"EUR","rate":{eur}}},
@@ -360,10 +360,10 @@ mod tests {
         store.update(cx, RatesStore::refresh_if_stale);
         cx.run_until_parked();
         store.read_with(cx, |store, _| {
-            assert_eq!(store.table().main_date(), Some("2026-11-07"));
+            assert_eq!(store.table().main_date(), Some("2026-11-06"));
             assert_eq!(store.refreshes(), 1);
             let previous = store.previous().expect("the previous day was fetched");
-            assert_eq!(previous.date, "2026-11-06");
+            assert_eq!(previous.date, "2026-11-05");
             assert_eq!(
                 previous.cross_rate("USD", "EUR"),
                 Decimal::from_str("0.91").ok()
@@ -373,7 +373,7 @@ mod tests {
             *urls.lock().unwrap(),
             [
                 "https://api.frankfurter.dev/v2/rates?base=USD",
-                "https://api.frankfurter.dev/v2/rates?base=USD&date=2026-11-06",
+                "https://api.frankfurter.dev/v2/rates?base=USD&date=2026-11-05",
             ]
         );
 
@@ -401,7 +401,7 @@ mod tests {
             *urls.lock().unwrap(),
             [
                 "https://api.frankfurter.dev/v2/rates?base=USD&providers=ECB",
-                "https://api.frankfurter.dev/v2/rates?base=USD&date=2026-11-06&providers=ECB",
+                "https://api.frankfurter.dev/v2/rates?base=USD&date=2026-11-05&providers=ECB",
             ]
         );
 

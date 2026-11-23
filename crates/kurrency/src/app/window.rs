@@ -76,18 +76,40 @@ pub(crate) fn window_options(cx: &mut App) -> WindowOptions {
     options
 }
 
+const SAVE_BOUNDS_AFTER: Duration = Duration::from_millis(500);
+
 impl KurrencyApp {
-    /// The window moved or was resized: remember its frame a moment after
-    /// it settles.
+    /// The window moved or was resized: remember its frame once it has been
+    /// still for [`SAVE_BOUNDS_AFTER`].
+    ///
+    /// Keeping one task alive instead of spawning a new one on every `WM_SIZE`
+    /// / `WM_MOVE` avoids flooding Windows' modal resize loop with foreground
+    /// task messages and uncancelled threadpool timers (which would starve
+    /// `WM_PAINT` and write settings mid-drag).
     pub(super) fn window_moved(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let _ = window;
+        self.bounds_changed_at = Some(cx.background_executor().now());
+        if self._save_bounds.is_some() {
+            return;
+        }
         self._save_bounds = Some(cx.spawn_in(window, async move |this, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(500))
-                .await;
+            loop {
+                let remaining = this
+                    .read_with(cx, |this, cx| {
+                        let now = cx.background_executor().now();
+                        this.bounds_changed_at.map_or(Duration::ZERO, |at| {
+                            SAVE_BOUNDS_AFTER.saturating_sub(now.saturating_duration_since(at))
+                        })
+                    })
+                    .unwrap_or(Duration::ZERO);
+                if remaining.is_zero() {
+                    break;
+                }
+                cx.background_executor().timer(remaining).await;
+            }
             let _ = this.update_in(cx, |this, window, _| {
-                this.remember_bounds(window);
+                this.bounds_changed_at = None;
                 this._save_bounds = None;
+                this.remember_bounds(window);
             });
         }));
     }

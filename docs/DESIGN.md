@@ -22,8 +22,8 @@ at the screen, with a minimum of 320×440.
 │ │  = 1,250                       │ │  expression echo while editing
 │ ╰────────────────────────────────╯ │
 │   10   100   1k   10k              │  quick amounts
-│  ▭ EUR   € 1,119.50      ▾0.3%     │  read-only rows, 56px
-│  ▭ JPY   ¥ 197,875       ▴0.1%     │  daily change chip
+│  ▭ EUR   € 1,119.50     ▾0.30%     │  read-only rows, 56px
+│  ▭ JPY   ¥ 197,875      ▴0.10%     │  daily change chip
 │  ＋ Add            type to search  │
 └────────────────────────────────────┘
 ```
@@ -79,8 +79,10 @@ at the screen, with a minimum of 320×440.
 
   Next to it is the relative age ("2h"). Its tooltip shows the source, the date, the next refresh
   or the error.
-- **Daily change.** Each row's chip compares today's rate with the previous day's, showing a
-  muted `0.0%` pill when unchanged or `·` when the previous day is unknown, with hover feedback.
+- **Daily change.** Each row's chip compares today's rate with the previous trading day's (stepping
+  back across weekends so Friday's move stays visible until Monday's rates), rounded to two decimals
+  and showing a muted `0.00%` pill when unchanged or `·` when the previous day is unknown, with hover
+  feedback.
 - **Copy.** Copying a row (hover copy button, context menu, or Ctrl+C) puts the raw number on the
   clipboard, and a ✓ flashes in place of the row's chip.
 

@@ -27,7 +27,7 @@ mod window;
 
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
@@ -102,6 +102,8 @@ pub(crate) struct KurrencyApp {
     last_state: undo::Snapshot,
     /// Nested [`Self::batch`] calls: one undo step for several changes.
     batch: usize,
+    /// When the window last moved or resized, for debouncing [`Self::_save_bounds`].
+    bounds_changed_at: Option<Instant>,
     /// Saves the window's frame a moment after it stops moving.
     _save_bounds: Option<Task<()>>,
     pub(crate) motion: ui::motion::Motion,
@@ -266,6 +268,7 @@ impl KurrencyApp {
             history: undo::History::default(),
             last_state,
             batch: 0,
+            bounds_changed_at: None,
             _save_bounds: None,
             motion: Default::default(),
             toast: None,

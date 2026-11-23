@@ -95,6 +95,21 @@ impl Date {
         Self(self.0 + days)
     }
 
+    /// The previous FX trading day (Monday–Friday).
+    ///
+    /// Weekend tables carry Friday's closing session, so Saturday (`-2`) and
+    /// Sunday (`-3`) step back to Thursday; Monday (`-3`) steps back across
+    /// the closed weekend to Friday; Tuesday–Friday step back one day.
+    pub fn previous_trading_day(self) -> Self {
+        // 1970-01-01 (`Date(0)`) was a Thursday: `0 = Mon .. 4 = Fri, 5 = Sat, 6 = Sun`.
+        let back = match (self.0 + 3).rem_euclid(7) {
+            0 | 6 => -3,
+            5 => -2,
+            _ => -1,
+        };
+        self.add_days(back)
+    }
+
     /// `14 Oct` (`10月14日`), or `14 Oct 2019` (`2019年10月14日`) with the
     /// year.
     pub fn short(self, with_year: bool) -> String {
@@ -487,6 +502,20 @@ mod tests {
         for days in -30_000..30_000 {
             let d = Date(days);
             assert_eq!(Date::parse(&d.to_string()), Some(d));
+        }
+        // Thu..Wed across a weekend, and the Nov 2026 weekend specifically.
+        for (day, prev) in [
+            ("2026-11-05", "2026-11-04"), // Thu -> Wed
+            ("2026-11-06", "2026-11-05"), // Fri -> Thu
+            ("2026-11-07", "2026-11-05"), // Sat -> Thu
+            ("2026-11-08", "2026-11-05"), // Sun -> Thu
+            ("2026-11-09", "2026-11-06"), // Mon -> Fri
+            ("2026-11-10", "2026-11-09"), // Tue -> Mon
+            ("2026-11-11", "2026-11-10"), // Wed -> Tue
+            ("2026-11-22", "2026-11-19"), // Sun -> Thu
+            ("2026-11-23", "2026-11-20"), // Mon -> Fri
+        ] {
+            assert_eq!(date(day).previous_trading_day(), date(prev), "{day}");
         }
     }
 

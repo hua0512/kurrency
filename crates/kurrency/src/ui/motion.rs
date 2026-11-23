@@ -30,7 +30,7 @@ use gpui_kit::component::h_flex;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Animation, AnimationExt as _, AnyElement, ElementId, IntoElement, ParentElement as _,
-    Styled as _, div, ease_out_quint, px,
+    SharedString, Styled as _, div, ease_out_quint, px,
 };
 use rust_decimal::Decimal;
 
@@ -367,10 +367,36 @@ impl Motion {
     }
 }
 
+/// A single character as a [`SharedString`], without allocating for digits and
+/// number separators.
+pub(crate) fn char_text(ch: char) -> SharedString {
+    match ch {
+        '0' => SharedString::new_static("0"),
+        '1' => SharedString::new_static("1"),
+        '2' => SharedString::new_static("2"),
+        '3' => SharedString::new_static("3"),
+        '4' => SharedString::new_static("4"),
+        '5' => SharedString::new_static("5"),
+        '6' => SharedString::new_static("6"),
+        '7' => SharedString::new_static("7"),
+        '8' => SharedString::new_static("8"),
+        '9' => SharedString::new_static("9"),
+        ',' => SharedString::new_static(","),
+        '.' => SharedString::new_static("."),
+        '-' => SharedString::new_static("-"),
+        ' ' => SharedString::new_static(" "),
+        '\'' => SharedString::new_static("'"),
+        '\u{a0}' => SharedString::new_static("\u{a0}"),
+        '\u{2009}' => SharedString::new_static("\u{2009}"),
+        '\u{202f}' => SharedString::new_static("\u{202f}"),
+        _ => SharedString::from(ch.to_string()),
+    }
+}
+
 /// One character of an amount drawn `size` px high, where it is this
 /// frame.
 fn glyph(ch: char, pose: Pose, size: f32) -> gpui_kit::Div {
-    let el = div().child(ch.to_string());
+    let el = div().child(char_text(ch));
     if pose == Pose::REST {
         return el;
     }
@@ -397,7 +423,7 @@ pub(crate) fn roll_exits(roll: Option<&Roll>, size: f32, decimals: f32) -> Vec<A
             let mut glyphs = chars.into_iter().map(|(ch, pose)| match pose {
                 Some(pose) => glyph(ch, pose, size),
                 // Unchanged: only its width, so the rest line up.
-                None => div().invisible().child(ch.to_string()),
+                None => div().invisible().child(char_text(ch)),
             });
             let integer: Vec<_> = glyphs.by_ref().take(int_len).collect();
             let fraction: Vec<_> = glyphs.collect();

@@ -61,14 +61,14 @@
     <display_length compare="ge">360</display_length>
   </requires>
   <releases>
-    <release version="0.3.0" date="2026-11-22">
+    <release version="0.3.0" date="2026-11-23">
       <description>
         <ul>
-          <li>Rows: right-aligned amounts, inverse rate on hover, one-click hover copy, and interactive change pills.</li>
+          <li>Rows: right-aligned amounts, inverse rate on hover, one-click hover copy, and two-decimal trading-day change pills.</li>
           <li>Input: pinned currency symbol while editing, clickable source currency selector, currency-scaled quick amounts, percentage arithmetic (%), and clipboard price hints on focus.</li>
           <li>History chart: trend-coloured area fill, high and low reference lines, personal amount conversion on scrub, drag-to-measure span, and a range position bar.</li>
           <li>Palette: live conversion preview, popular currencies first, and switching directly to currencies already in the list.</li>
-          <li>Unified single-layer title bar across all pages with a merged freshness and refresh pill.</li>
+          <li>Unified single-layer title bar across all pages with a merged freshness and refresh pill, and smoother window resizing on Windows.</li>
         </ul>
       </description>
     </release>

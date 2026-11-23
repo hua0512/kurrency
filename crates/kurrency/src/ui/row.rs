@@ -24,9 +24,9 @@ use rust_decimal::Decimal;
 
 use crate::app::{KurrencyApp, OpenPicker, OpenRowDetail, ROW_CONTEXT};
 use crate::layout::metrics;
-use crate::ui::anchor::{amount_text, code_label, fit_size, tabular_numerals};
+use crate::ui::anchor::{code_label, fitted_amount_text, tabular_numerals};
 use crate::ui::flag::flag;
-use crate::ui::motion::{self, Leaving};
+use crate::ui::motion::{self, Leaving, Roll};
 use crate::ui::theme::{CHIP_TINT, Tokens};
 
 /// The row's horizontal inset inside the window: its hover and focus
@@ -43,29 +43,33 @@ const CODE_X: f32 = INSET + ROW_PAD + 20. + FLAG_GAP;
 const MIN_CODE_W: f32 = 54.;
 /// Width of the hover one-click copy button.
 const COPY_BTN: f32 = 24.;
-const CHIP_SLOT: f32 = 62.;
+const CHIP_SLOT: f32 = 66.;
 /// Row amounts: 18px, weight 450.
 const AMOUNT_SIZE: f32 = 18.;
 const AMOUNT_WEIGHT: FontWeight = FontWeight(450.);
 
-/// A row amount's text size: 18px, smaller when the amount would not fit
-/// between the code column and the change chip.
-fn amount_size(
+/// Renders a row's converted amount at 18px, shrinking to fit between the code
+/// column and the change chip when very long.
+fn row_amount(
     code: &str,
     value: Decimal,
     fmt: &money::Format,
     hovered: bool,
+    decimals: f32,
+    roll: Option<&Roll>,
     window: &Window,
-) -> f32 {
+) -> AnyElement {
     let copy_space = if hovered { COPY_BTN + 6. } else { 0. };
     let beside = CODE_X + MIN_CODE_W + 8. + copy_space + 8. + CHIP_SLOT + ROW_PAD + INSET + 4.;
-    fit_size(
+    fitted_amount_text(
         code,
         value,
         fmt,
         AMOUNT_SIZE,
         AMOUNT_WEIGHT,
         (f32::from(window.viewport_size().width) - beside).max(72.),
+        decimals,
+        roll,
         window,
     )
 }
@@ -243,15 +247,7 @@ impl Render for RowDragView {
         let t = Tokens::get(cx);
         let code = self.code.clone();
         let amount = match self.value {
-            Some(value) => amount_text(
-                &code,
-                value,
-                &self.fmt,
-                amount_size(&code, value, &self.fmt, false, window),
-                AMOUNT_WEIGHT,
-                t.decimals,
-                None,
-            ),
+            Some(value) => row_amount(&code, value, &self.fmt, false, t.decimals, None, window),
             None => div().child("—").into_any_element(),
         };
         let shadow = if t.dark {
@@ -356,17 +352,9 @@ fn render_ghost(
 ) -> AnyElement {
     let t = Tokens::get(cx);
     let code = leaving.code.clone();
-    let amount = app.value_of(&code, cx).map(|value| {
-        amount_text(
-            &code,
-            value,
-            &app.fmt,
-            amount_size(&code, value, &app.fmt, false, window),
-            AMOUNT_WEIGHT,
-            t.decimals,
-            None,
-        )
-    });
+    let amount = app
+        .value_of(&code, cx)
+        .map(|value| row_amount(&code, value, &app.fmt, false, t.decimals, None, window));
     let row = v_flex()
         .px(px(INSET))
         .child(
@@ -431,14 +419,14 @@ fn render_row(
 
     let value = app.value_of(&code, cx);
     let amount = match value {
-        Some(value) => amount_text(
+        Some(value) => row_amount(
             &code,
             value,
             &app.fmt,
-            amount_size(&code, value, &app.fmt, hovered, window),
-            AMOUNT_WEIGHT,
+            hovered,
             t.decimals,
             app.motion.roll(&code),
+            window,
         ),
         None => div()
             .text_size(px(AMOUNT_SIZE))
@@ -638,8 +626,8 @@ fn render_row(
         .child(handle)
 }
 
-/// `▲ 0.3%` on a 10% tint of its colour, or a subtle muted pill for unchanged
-/// (`0.0%`) / unknown (`·`) so every row's history chip reads as interactive.
+/// `▲ 0.30%` on a 10% tint of its colour, or a subtle muted pill for unchanged
+/// (`0.00%`) / unknown (`·`) so every row's history chip reads as interactive.
 fn render_chip(
     change: Change,
     has_previous: bool,
@@ -650,7 +638,7 @@ fn render_chip(
     let (up, _pct) = match change {
         Change::Flat => {
             let label = if has_previous {
-                format!("0{decimal}0%")
+                format!("0{decimal}00%")
             } else {
                 change.label()
             };
@@ -666,7 +654,7 @@ fn render_chip(
             };
             return div()
                 .h(px(22.))
-                .min_w(px(46.))
+                .min_w(px(52.))
                 .px(px(7.))
                 .flex()
                 .items_center()

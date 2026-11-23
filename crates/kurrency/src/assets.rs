@@ -105,7 +105,10 @@ const CJK_FALLBACKS: &[&str] = &[
 
 /// Inter, falling back to [`CJK_FALLBACKS`] for the characters it lacks.
 pub(crate) fn font_fallbacks() -> gpui_kit::FontFallbacks {
-    gpui_kit::FontFallbacks::from_fonts(CJK_FALLBACKS.iter().map(|&s| s.to_string()).collect())
+    static FALLBACKS: LazyLock<gpui_kit::FontFallbacks> = LazyLock::new(|| {
+        gpui_kit::FontFallbacks::from_fonts(CJK_FALLBACKS.iter().map(|&s| s.to_string()).collect())
+    });
+    FALLBACKS.clone()
 }
 
 /// Sets [`font_fallbacks`] on an element and its children. Views drawn

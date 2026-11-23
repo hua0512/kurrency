@@ -5,7 +5,7 @@
 //! the raw input and expressions echo "= 4,500" below. Under the card sit the
 //! currency-scaled quick-amount pills.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
@@ -14,8 +14,8 @@ use gpui_kit::component::{Icon, Sizable as _, h_flex, v_flex};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, BoxShadow, Context, FontFeatures, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, StatefulInteractiveElement as _, Styled as _, TextRun, Window, div, hsla,
-    px,
+    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled as _, TextRun,
+    Window, div, hsla, px,
 };
 use kurrency_core::i18n::tr;
 use kurrency_core::money;
@@ -42,7 +42,9 @@ pub(crate) const ANCHOR_ROLL: &str = "anchor";
 
 /// Tabular (fixed-width) numerals, so amounts line up.
 pub(crate) fn tabular_numerals() -> FontFeatures {
-    FontFeatures(Arc::new(vec![("tnum".to_string(), 1)]))
+    static TABULAR: LazyLock<FontFeatures> =
+        LazyLock::new(|| FontFeatures(Arc::new(vec![("tnum".to_string(), 1)])));
+    TABULAR.clone()
 }
 
 /// A code in the 13px / 600 style of the typography table.
@@ -53,19 +55,34 @@ pub(crate) fn code_label(code: &str) -> impl IntoElement {
         .child(code.to_string())
 }
 
-/// `$ 1,250.00` with the symbol at 45% and the decimals at the theme's
-/// opacity (55%, Ink 75%). With a [`Roll`], the digits in mid-roll are
-/// drawn where they are, over what they replace rolling out.
-pub(crate) fn amount_text(
+/// `$ 1,250.00` fitted to `width`, with the symbol at 45% and the decimals at
+/// the theme's opacity (55%, Ink 75%). With a [`Roll`], the digits in mid-roll
+/// are drawn where they are, over what they replace rolling out.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fitted_amount_text(
     code: &str,
     value: Decimal,
     format: &money::Format,
+    max_size: f32,
+    weight: FontWeight,
+    width: f32,
+    decimals: f32,
+    roll: Option<&Roll>,
+    window: &Window,
+) -> AnyElement {
+    let parts = present::amount_parts(code, value, format, assets::has_glyph);
+    let size = fit_parts(&parts, max_size, weight, width, window);
+    amount_parts_text(code, parts, size, weight, decimals, roll)
+}
+
+fn amount_parts_text(
+    code: &str,
+    parts: present::AmountParts,
     size: f32,
     weight: FontWeight,
     decimals: f32,
     roll: Option<&Roll>,
 ) -> AnyElement {
-    let parts = present::amount_parts(code, value, format, assets::has_glyph);
     let int_len = parts.integer.chars().count();
     let chars = |text: &str, offset: usize| {
         text.chars()
@@ -105,28 +122,25 @@ pub(crate) fn amount_text(
         .into_any_element()
 }
 
-/// The smallest size [`fit_size`] shrinks an amount to.
+/// The smallest size [`fit_parts`] shrinks an amount to.
 const MIN_FIT: f32 = 0.5;
 
-/// The largest text size, up to `size`, at which [`amount_text`] fits in
-/// `width`: a long amount (`IRR 1,884,417,000,000`) shrinks rather than
-/// being cut off, which would show a different number. Not below half of
-/// `size`; past that the column clips.
-pub(crate) fn fit_size(
-    code: &str,
-    value: Decimal,
-    format: &money::Format,
+/// The largest text size, up to `size`, at which `parts` fits in `width`: a
+/// long amount (`IRR 1,884,417,000,000`) shrinks rather than being cut off,
+/// which would show a different number. Not below half of `size`; past that
+/// the column clips.
+fn fit_parts(
+    parts: &present::AmountParts,
     size: f32,
     weight: FontWeight,
     width: f32,
     window: &Window,
 ) -> f32 {
-    let parts = present::amount_parts(code, value, format, assets::has_glyph);
     let mut font = gpui_kit::font(assets::FONT_FAMILY);
     font.weight = weight;
     font.features = tabular_numerals();
     let text_system = window.text_system();
-    let measure = |text: String, size: f32| {
+    let measure = |text: SharedString, size: f32| {
         let run = TextRun {
             len: text.len(),
             font: font.clone(),
@@ -135,23 +149,37 @@ pub(crate) fn fit_size(
             underline: None,
             strikethrough: None,
         };
-        f32::from(
-            text_system
-                .shape_line(text.into(), px(size), &[run], None)
-                .width,
-        )
+        f32::from(text_system.shape_line(text, px(size), &[run], None).width)
     };
+    let symbol: Option<SharedString> = parts.symbol.as_deref().map(|s| s.to_string().into());
+    // With `tnum`, all ASCII digits share one advance width; count them once
+    // and deduplicate group separators so resizing never shapes 15+ characters
+    // one by one through DirectWrite.
+    let mut digit_count = 0usize;
+    let mut extras: Vec<(char, usize)> = Vec::with_capacity(3);
+    for ch in parts.integer.chars().chain(parts.fraction.chars()) {
+        if ch.is_ascii_digit() {
+            digit_count += 1;
+        } else if let Some((_, count)) = extras.iter_mut().find(|(c, _)| *c == ch) {
+            *count += 1;
+        } else {
+            extras.push((ch, 1));
+        }
+    }
     let laid_out = |size: f32| {
-        let digits: f32 = parts
-            .integer
-            .chars()
-            .chain(parts.fraction.chars())
-            .map(|ch| measure(ch.to_string(), size).ceil())
+        let digits = if digit_count > 0 {
+            digit_count as f32 * measure(SharedString::new_static("0"), size).ceil()
+        } else {
+            0.
+        };
+        let punct: f32 = extras
+            .iter()
+            .map(|&(ch, n)| n as f32 * measure(motion::char_text(ch), size).ceil())
             .sum();
-        digits
-            + parts.symbol.as_ref().map_or(0., |symbol| {
-                measure(symbol.clone(), size).ceil() + size * 0.25
-            })
+        let sym = symbol
+            .as_ref()
+            .map_or(0., |sym| measure(sym.clone(), size).ceil() + size * 0.25);
+        digits + punct + sym
     };
     let natural = laid_out(size);
     if natural <= width {
@@ -272,23 +300,17 @@ pub(crate) fn render(
             .into_any_element()
     } else {
         let display = match app.amount {
-            Some(value) => amount_text(
+            Some(value) => fitted_amount_text(
                 &code,
                 value,
                 &app.fmt,
-                fit_size(
-                    &code,
-                    value,
-                    &app.fmt,
-                    AMOUNT_SIZE,
-                    FontWeight::MEDIUM,
-                    // The card's border and 16px padding on each side.
-                    f32::from(window.viewport_size().width) - 2. * (metrics::PAD_X + 17.),
-                    window,
-                ),
+                AMOUNT_SIZE,
                 FontWeight::MEDIUM,
+                // The card's border and 16px padding on each side.
+                f32::from(window.viewport_size().width) - 2. * (metrics::PAD_X + 17.),
                 t.decimals,
                 app.motion.roll(ANCHOR_ROLL),
+                window,
             ),
             None => div()
                 .text_size(px(AMOUNT_SIZE))

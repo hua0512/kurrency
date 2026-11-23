@@ -292,3 +292,46 @@ fn long_amounts_shrink_to_fit(cx: &mut TestAppContext) {
         "{anchor:?} overflows {card:?}"
     );
 }
+
+#[gpui_kit::test]
+fn resize_burst_debounces_into_one_saved_frame(cx: &mut TestAppContext) {
+    let dir = std::env::temp_dir().join(format!("kurrency-app-resize-{}", std::process::id()));
+    let path = dir.join("settings.json");
+    let (app, cx) = open_saving(
+        cx,
+        None,
+        settings(&["USD", "EUR"], "100"),
+        Some(path.clone()),
+    );
+    cx.update(|window, cx| {
+        app.update(cx, |app, cx| {
+            let sub = cx.observe_window_bounds(window, KurrencyApp::window_moved);
+            app._subscriptions.push(sub);
+        });
+    });
+    settle(cx);
+
+    // Dragging the edge continuously resets the deadline without spawning new
+    // tasks or writing to disk mid-drag.
+    for step in 0..10 {
+        let width = 360. + step as f32 * 12.;
+        cx.simulate_resize(gpui_kit::size(px(width), px(440.)));
+        cx.executor().advance_clock(Duration::from_millis(100));
+        cx.run_until_parked();
+        assert!(
+            settings::load(Some(&path), None).window.is_none(),
+            "wrote settings mid-resize at step {step}"
+        );
+    }
+    app.read_with(cx, |app, _| assert!(app._save_bounds.is_some()));
+
+    // Half a second after the last resize, the final width is persisted once.
+    cx.executor().advance_clock(Duration::from_millis(500));
+    cx.run_until_parked();
+    app.read_with(cx, |app, _| assert!(app._save_bounds.is_none()));
+    let saved = settings::load(Some(&path), None)
+        .window
+        .expect("saved window bounds");
+    assert_eq!(saved.width, 360. + 9. * 12.);
+    let _ = std::fs::remove_dir_all(dir);
+}
